@@ -5,11 +5,30 @@ const endpoint = "https://api.easyinvoice.cloud/v2/free/invoices";
 const requestTimeoutMs = 30_000;
 
 /**
- * Creates a PDF invoice through the hosted API. For server-side use only.
- * Omitted or undefined data defaults to an empty object.
+ * Creates a PDF invoice through the hosted API and returns its PDF and calculations.
+ * Requires an internet connection and is intended for server-side Node.js use.
+ * The API validates invoice fields and calculates totals; this client keeps no invoice state.
  *
- * Rejects with a `TypeError` for invalid arguments and with an
- * {@link EasyInvoiceError} for failed requests and malformed responses.
+ * Use `.then()`/`.catch()` or `await` inside an async function. Top-level `await`
+ * is also supported when the calling project's module and TypeScript settings allow it.
+ * Each call has a 30-second deadline covering the request and reading the response body.
+ *
+ * @param data - Invoice fields and optional account key. Omitted or `undefined` data defaults to `{}`.
+ * @returns A promise resolving to the API response's inner `data` object, including a base64 PDF.
+ * @throws {TypeError} The promise rejects if arguments are invalid or cannot be serialized as JSON.
+ * @throws {EasyInvoiceError} The promise rejects on HTTP errors, network failures, timeouts, or malformed responses.
+ *
+ * @example
+ * import { writeFile } from "node:fs/promises";
+ * import { createInvoice } from "easyinvoice";
+ *
+ * createInvoice({
+ *   mode: "development",
+ *   products: [{ quantity: 2, description: "Consulting", taxRate: 8.25, price: 75 }],
+ *   settings: { currency: "USD", locale: "en-US" },
+ * })
+ *   .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
+ *   .catch((error) => console.error(error));
  */
 export async function createInvoice(
   data: InvoiceData = {},
@@ -92,14 +111,17 @@ export async function createInvoice(
   return result;
 }
 
+/** Recognizes non-null, non-array objects without validating their properties. */
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Checks the minimum successful response shape; calculation validation belongs to the API. */
 function hasPdf(value: unknown): value is CreateInvoiceResult {
   return isObject(value) && typeof value.pdf === "string" && value.pdf !== "";
 }
 
+/** Builds an HTTP failure message, including a nonblank API message when available. */
 function describeFailure(status: number, body: unknown): string {
   const message = isObject(body) ? body.message : undefined;
   const detail =

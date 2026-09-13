@@ -273,9 +273,12 @@ globalThis.fetch = async () => {
   return Response.json({ data: { pdf } });
 };
 rmSync("invoice.pdf", { force: true });
+// Promise chains can finish after module evaluation, so check once file I/O has completed.
+process.once("beforeExit", () => {
+  assert.equal(requests, 1);
+  assert.equal(readFileSync("invoice.pdf").toString("base64"), pdf);
+});
 await import(process.argv[2]);
-assert.equal(requests, 1);
-assert.equal(readFileSync("invoice.pdf").toString("base64"), pdf);
 `,
   );
   execFileSync(runtime, ["check-example.mjs", "./example.js"], {

@@ -36,6 +36,7 @@ production account key. Keep production API keys on your server, never in browse
 import { writeFile } from "fs/promises";
 import easyinvoice, { type InvoiceData } from "easyinvoice";
 
+/** Invoice fields for a development request that produces an EXAMPLE watermark. */
 const data: InvoiceData = {
   mode: "development",
   sender: {
@@ -72,11 +73,15 @@ const data: InvoiceData = {
 const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
-const result = await easyinvoice.createInvoice(data);
-await writeFile("invoice.pdf", result.pdf, "base64");
+easyinvoice
+  .createInvoice(data)
+  .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
+  .catch((error) => console.error(error));
 ```
 
-`fs/promises` provides file operations that work with `await`; `writeFile` from `fs` requires a callback.
+`createInvoice()` also supports `await` inside an `async` function, or at the top level when your project's
+module and TypeScript settings allow it.
+`fs/promises` provides Promise-based file operations; `writeFile` from `fs` requires a callback.
 See [Errors](#errors) for handling failed requests.
 
 Run it directly on Node.js 24 or newer:
@@ -118,10 +123,7 @@ easyinvoice
     settings: { currency: "USD", locale: "en-US", format: "Letter" },
   })
   .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+  .catch((error) => console.error(error));
 ```
 
 ### API keys and development mode
@@ -142,7 +144,9 @@ Use the default export as shown above, or import the function directly:
 ```ts
 import { createInvoice } from "easyinvoice";
 
-const result = await createInvoice(data);
+createInvoice()
+  .then((result) => console.log(result))
+  .catch((error) => console.error(error));
 ```
 
 ### Errors
