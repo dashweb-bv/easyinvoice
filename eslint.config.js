@@ -4,7 +4,7 @@ import prettier from "eslint-config-prettier";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/", "coverage/", "examples/"] },
+  { ignores: ["dist/", "coverage/", "examples/", "temp/"] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
@@ -19,7 +19,7 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_" },
+        { argsIgnorePattern: "^_", ignoreRestSiblings: true },
       ],
       // `import x = require()` is the CommonJS import form for the .cts entry point.
       "@typescript-eslint/no-require-imports": [

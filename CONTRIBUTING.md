@@ -101,3 +101,19 @@ and tag; repository rules must allow the workflow to create tags.
 
 Pull requests run checks without publishing. Both workflows use Node.js 24 and Ubuntu ARM64, with Husky disabled
 in CI.
+
+### Signed PDF transport rollout
+
+The v2.4.2 and v3.0.48 maintenance packages are built from their legacy sources, preserving their runtimes,
+callbacks, browser helpers, and base64 result contract. Their manifests set npm distribution tags to
+`legacy` and `legacy-v3`, respectively, so publishing a maintenance package does not move `latest`.
+Run `npm run build` and `npm test` in each maintenance checkout before packaging it. The transport tests
+mock both the invoice request and PDF download; they do not create invoices or exercise live rate limits.
+The v2.4.1 published source includes API-key handling absent from its recorded Git commit; retain that handling.
+
+The revised v4 returns URL metadata by default, streams files through `saveInvoice()`, and makes base64
+explicit through `{ output: "base64" }`. This is an intentional reset of the initial v4.0.0–v4.0.4 API.
+Use an unused v4 release number: a `feat:` commit after v4.0.4 produces v4.1.0 with the existing release rules.
+Keep historical Git tags even if the corresponding npm versions are later unpublished, so semantic-release
+does not try to reuse an npm version. Unpublishing is a separate manual operation; no migration script does it.
+Leave the server's v2 endpoint available for clients that have not installed the maintenance patches.

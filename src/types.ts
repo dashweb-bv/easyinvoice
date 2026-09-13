@@ -233,11 +233,27 @@ export interface ProductCalculations {
 export type TaxCalculations = Record<number, number>;
 
 /**
- * Invoice returned by `createInvoice()`, unwrapped from the API response's `data` property.
- * Additional fields from the server are preserved. Only the presence of a nonempty PDF
- * string is checked locally; calculation contents are supplied by the API.
+ * Client-side output selection; this option is never sent to the invoice API.
  */
+export interface CreateInvoiceOptions {
+  /** Return a signed URL by default, or download the PDF and encode it as base64. */
+  output?: "url" | "base64";
+}
+
+/** Invoice returned by default, unwrapped from the API response's data property. */
 export interface CreateInvoiceResult {
+  /** Temporary HTTPS PDF download URL. Use saveInvoice(result, filename) to stream it to disk. */
+  pdfUrl: string;
+  /** UTC ISO timestamp at which the URL expires. Save the PDF promptly; this is not a permanent link. */
+  expiresAt: string;
+  /** Rounded line item amounts, tax by rate, subtotal, and total supplied by the API. */
+  calculations: InvoiceCalculations;
+  /** Additional server response fields; narrow their types before use. */
+  [key: string]: unknown;
+}
+
+/** Invoice returned when the caller explicitly requests base64 output. */
+export interface CreateInvoiceBase64Result {
   /** Base64-encoded PDF contents. Decode with `Buffer.from(result.pdf, "base64")` or write using the `base64` encoding. */
   pdf: string;
   /** Rounded line item amounts, tax by rate, subtotal, and total supplied by the API. */

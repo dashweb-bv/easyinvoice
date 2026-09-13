@@ -6,8 +6,10 @@
 [![License](https://img.shields.io/npm/l/easyinvoice.svg)](LICENSE)
 
 Create PDF invoices from Node.js using JavaScript or TypeScript. Easy Invoice sends invoice data to the hosted API,
-which validates the invoice, calculates totals, and returns a base64 PDF. An internet connection is required.
+which validates the invoice, calculates totals, and returns a temporary PDF download URL. An internet connection is required.
 This package is for backend use only and has no runtime dependencies.
+
+To call the API from another language or an HTTP client, see [Direct REST access](#direct-rest-access).
 
 See [Budget Invoice](https://www.budgetinvoice.com/) for the product, account access, and current service terms.
 Service pricing and request limits are managed separately from this npm package.
@@ -33,7 +35,6 @@ It runs on the server. Omit `apiKey` for free access; use an environment variabl
 production account key. Keep production API keys on your server, never in browser code or a public bundle.
 
 ```ts
-import { writeFile } from "fs/promises";
 import easyinvoice, { type InvoiceData } from "easyinvoice";
 
 /** Invoice fields for a development request that produces an EXAMPLE watermark. */
@@ -75,13 +76,13 @@ if (apiKey) data.apiKey = apiKey;
 
 easyinvoice
   .createInvoice(data)
-  .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
+  .then((result) => easyinvoice.saveInvoice(result, "invoice.pdf"))
   .catch((error) => console.error(error));
 ```
 
 `createInvoice()` also supports `await` inside an `async` function, or at the top level when your project's
 module and TypeScript settings allow it.
-`fs/promises` provides Promise-based file operations; `writeFile` from `fs` requires a callback.
+`saveInvoice()` streams the PDF directly to disk without buffering or base64 conversion.
 See [Errors](#errors) for handling failed requests.
 
 Run it directly on Node.js 24 or newer:
@@ -106,7 +107,6 @@ Running either example contacts the hosted API and writes `invoice.pdf`.
 CommonJS is supported too:
 
 ```js
-const { writeFile } = require("fs/promises");
 const easyinvoice = require("easyinvoice");
 
 easyinvoice
@@ -122,7 +122,7 @@ easyinvoice
     ],
     settings: { currency: "USD", locale: "en-US", format: "Letter" },
   })
-  .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
+  .then((result) => easyinvoice.saveInvoice(result, "invoice.pdf"))
   .catch((error) => console.error(error));
 ```
 
@@ -137,7 +137,23 @@ easyinvoice
 ## API
 
 `createInvoice(data?: InvoiceData): Promise<CreateInvoiceResult>` sends invoice
-data to the hosted API and returns its PDF and calculations. Calls are independent; the client keeps no invoice state.
+data to the v3 API and returns `pdfUrl`, `expiresAt`, and `calculations`. It does not download the PDF.
+Calls are independent; the client keeps no invoice state.
+
+`saveInvoice(result, filename): Promise<void>` downloads that invoice to a local file. The parent directory must exist. It streams to a temporary file beside the destination, then replaces the destination after a successful download. Download failures leave an existing file untouched and remove the temporary file. It never creates another invoice.
+
+Download URLs expire after five minutes. Save the PDF promptly; do not store the URL as a permanent invoice link or log its signed query string. Invoice API credentials are never forwarded to the download host. Download redirects are rejected.
+
+### Optional base64 output
+
+Request base64 explicitly when an integration needs it:
+
+```ts
+const result = await easyinvoice.createInvoice(data, { output: "base64" });
+// result.pdf is base64; calculations and other result fields are preserved.
+```
+
+This downloads the signed URL and encodes the PDF locally. It returns `CreateInvoiceBase64Result` with `pdf` instead of `pdfUrl` and `expiresAt`. The output option is client-only and is never sent to the API.
 
 Use the default export as shown above, or import the function directly:
 
@@ -156,7 +172,8 @@ createInvoice()
   as parsed JSON or plain text), and the message includes the HTTP status and the API's `message` field when present.
   Network failures leave `status` undefined and expose the underlying error as `cause`.
 - Malformed successful responses also reject with an `EasyInvoiceError`.
-- Requests time out after 30 seconds, including downloading the response, and reject with an `EasyInvoiceError`.
+- Creation has one 30-second deadline, including the PDF download when base64 is requested. Each `saveInvoice()` call has its own 30-second download deadline.
+- Download HTTP errors expose `status`; their response bodies are not retained. Filesystem errors retain their underlying error code. A failed download does not automatically regenerate the invoice.
 
 ```ts
 import { createInvoice, EasyInvoiceError } from "easyinvoice";
@@ -263,7 +280,9 @@ const logo = Buffer.from(await response.arrayBuffer()).toString("base64");
 
 | Field                            | Value                                              |
 | -------------------------------- | -------------------------------------------------- |
-| `result.pdf`                     | Base64-encoded PDF                                 |
+| `result.pdfUrl`                  | Temporary signed PDF download URL (default output) |
+| `result.expiresAt`               | URL expiry as an ISO 8601 timestamp (default output) |
+| `result.pdf`                     | Base64-encoded PDF when using `{ output: "base64" }` |
 | `result.calculations.products`   | Per-product `subtotal`, `tax`, and `total`         |
 | `result.calculations.tax`        | Object mapping each tax rate to its total tax amount |
 | `result.calculations.subtotal`   | Combined amount excluding tax                      |
@@ -320,16 +339,74 @@ and `%tax%` is its calculated amount. Keep the wrapper tags so the template pars
 
 ## Direct REST access
 
-The same service can be called without this package. Send JSON with an outer `data` property:
+Call the service from any language or HTTP client without installing this package.
+The v4 npm package uses the **v3 HTTP endpoint**: `POST https://api.easyinvoice.cloud/v3/free/invoices`.
+Send JSON with an outer `data` property:
 
-```sh
-curl https://api.easyinvoice.cloud/v2/free/invoices \
-  -H 'Content-Type: application/json' \
-  -d '{"data":{"mode":"development","products":[{"quantity":1,"description":"Consulting","taxRate":8.25,"price":75}],"settings":{"currency":"USD","locale":"en-US","format":"Letter"}}}'
+```http
+POST /v3/free/invoices HTTP/1.1
+Host: api.easyinvoice.cloud
+Content-Type: application/json
+
+{
+  "data": {
+    "mode": "development",
+    "products": [
+      {
+        "quantity": 1,
+        "description": "Consulting",
+        "taxRate": 0,
+        "price": 12
+      }
+    ],
+    "settings": {
+      "currency": "USD",
+      "locale": "en-US",
+      "format": "Letter"
+    }
+  }
+}
 ```
 
-For account access, add an `Authorization: Bearer <your-api-key>` header from your server.
-The HTTP response wraps the invoice in `data`; `createInvoice()` returns that inner object.
+The same request with curl (Bash/zsh):
+
+```sh
+curl --fail-with-body https://api.easyinvoice.cloud/v3/free/invoices \
+  -H 'Content-Type: application/json' \
+  -d '{"data":{"mode":"development","products":[{"quantity":1,"description":"Consulting","taxRate":0,"price":12}],"settings":{"currency":"USD","locale":"en-US","format":"Letter"}}}'
+```
+
+For account access, add an `Authorization: Bearer <your-api-key>` header to the POST request from your server.
+Omit that header for free access. Omit `mode`, or set it to `"production"`, to create invoices without the development watermark.
+
+A successful response has this shape (the URL and expiry below are illustrative):
+
+```json
+{
+  "data": {
+    "calculations": {
+      "products": [{ "subtotal": 12, "tax": 0, "total": 12 }],
+      "tax": {},
+      "subtotal": 12,
+      "total": 12
+    },
+    "pdfUrl": "https://exports.budgetinvoice.com/invoices/example.pdf?SIGNED_QUERY_PARAMETERS",
+    "expiresAt": "2026-09-13T12:55:43.000Z"
+  }
+}
+```
+
+The HTTP response wraps the result in `data`; `createInvoice()` returns that inner object.
+Download the PDF with a separate GET to the complete `data.pdfUrl` value before `data.expiresAt` (five minutes after creation).
+Replace the placeholder below with the returned URL, keeping its full query string and the surrounding quotes:
+
+```sh
+curl --fail --output invoice.pdf 'PASTE_DATA_PDF_URL_HERE'
+```
+
+The signed URL authorizes the download; send your API key only to the invoice POST endpoint.
+The HTTP API returns URL metadata. For base64, download the PDF and encode its bytes locally,
+or use the package's [optional base64 output](#optional-base64-output).
 
 ## Concurrent creation
 
@@ -365,4 +442,10 @@ PDF rendering, printing, and download helpers have been removed.
 - Invoice types no longer accept arbitrary extra fields. Extend `InvoiceData` for fields that are not typed yet.
 - Node.js 22.14 or newer is required.
 
-The hosted endpoint, invoice payloads, API key behavior, and returned results are unchanged.
+Invoice payloads, API key behavior, and calculations are unchanged. Requests now use the v3 endpoint.
+
+### URL output in the revised v4 release
+
+The initial v4.0.0–v4.0.4 releases returned base64 by default. The revised v4 API deliberately changes that default to URL metadata. Replace `writeFile(filename, result.pdf, "base64")` with `saveInvoice(result, filename)`, or pass `{ output: "base64" }` to keep base64 output.
+
+The v2.4.2 and v3.0.48 maintenance patches use the same v3 transport but download and convert automatically, preserving their legacy base64 results and callbacks. Older unpatched installations still require the server's v2 endpoint.

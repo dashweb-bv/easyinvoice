@@ -1,4 +1,3 @@
-import { writeFile } from "fs/promises";
 import easyinvoice, { type InvoiceData } from "easyinvoice";
 
 /** Invoice fields for a development request that produces an EXAMPLE watermark. */
@@ -40,5 +39,5 @@ if (apiKey) data.apiKey = apiKey;
 
 easyinvoice
   .createInvoice(data)
-  .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
+  .then((result) => easyinvoice.saveInvoice(result, "invoice.pdf"))
   .catch((error) => console.error(error));

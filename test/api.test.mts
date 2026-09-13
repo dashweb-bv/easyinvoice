@@ -3,9 +3,10 @@ import { test } from "node:test";
 import easyinvoice from "../dist/index.cjs";
 import { createInvoice, EasyInvoiceError } from "../dist/index.mjs";
 
-const endpoint = "https://api.easyinvoice.cloud/v2/free/invoices";
+const endpoint = "https://api.easyinvoice.cloud/v3/free/invoices";
 const result = {
-  pdf: "JVBERi0xLjcK",
+  pdfUrl: "https://exports.example.com/invoice.pdf?signature=test",
+  expiresAt: "2099-01-01T00:05:00.000Z",
   calculations: {
     products: [{ subtotal: 10, tax: 2, total: 12 }],
     tax: { 20: 2 },
@@ -301,7 +302,12 @@ test("concurrent calls keep credentials and results independent", async (t) => {
         new Headers(init!.headers).get("authorization"),
         `Bearer ${data.apiKey}`,
       );
-      return Response.json({ data: { ...result, pdf: data.apiKey } });
+      return Response.json({
+        data: {
+          ...result,
+          pdfUrl: `https://exports.example.com/${data.apiKey}.pdf`,
+        },
+      });
     },
   );
   const invoices = await Promise.all([
@@ -309,7 +315,10 @@ test("concurrent calls keep credentials and results independent", async (t) => {
     createInvoice({ apiKey: "second" }),
   ]);
   assert.deepEqual(
-    invoices.map(({ pdf }) => pdf),
-    ["first", "second"],
+    invoices.map(({ pdfUrl }) => pdfUrl),
+    [
+      "https://exports.example.com/first.pdf",
+      "https://exports.example.com/second.pdf",
+    ],
   );
 });

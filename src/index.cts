@@ -44,8 +44,12 @@ namespace easyinvoice {
   export type ProductCalculations = types.ProductCalculations;
   /** Tax amounts grouped by percentage rate. See {@link types.TaxCalculations}. */
   export type TaxCalculations = types.TaxCalculations;
-  /** Returned PDF, calculations, and additional server fields. See {@link types.CreateInvoiceResult}. */
+  /** Returned PDF URL, expiry, calculations, and additional server fields. See {@link types.CreateInvoiceResult}. */
   export type CreateInvoiceResult = types.CreateInvoiceResult;
+  /** Explicit base64 PDF output with calculations. */
+  export type CreateInvoiceBase64Result = types.CreateInvoiceBase64Result;
+  /** Client-side URL or base64 output selection. */
+  export type CreateInvoiceOptions = types.CreateInvoiceOptions;
 }
 
 export = easyinvoice;
