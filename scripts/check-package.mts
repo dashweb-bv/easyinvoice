@@ -226,21 +226,21 @@ const commonjsError: commonjs.EasyInvoiceError = new commonjs.EasyInvoiceError("
 
   // Type-check the documented example without contacting the hosted API.
   const example = readFileSync(
-    join(root, "examples/create-invoice.mts"),
+    join(root, "examples/create-invoice.ts"),
     "utf8",
   ).replace(/\r\n/g, "\n");
   assert.ok(
     readFileSync(join(root, "README.md"), "utf8")
       .replace(/\r\n/g, "\n")
       .includes(["```ts", example.trim(), "```"].join("\n")),
-    "The README example must match examples/create-invoice.mts.",
+    "The README example must match examples/create-invoice.ts.",
   );
-  writeFileSync(join(consumer, "example.mts"), example);
+  writeFileSync(join(consumer, "example.ts"), example);
   writeFileSync(
     join(consumer, "tsconfig.example.json"),
     JSON.stringify({
       extends: "./tsconfig.json",
-      files: ["example.mts"],
+      files: ["example.ts"],
     }),
   );
   execFileSync(
