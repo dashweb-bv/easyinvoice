@@ -23,7 +23,7 @@ export interface InvoiceProduct {
 /** Formatting and page layout options interpreted by the hosted API. */
 export interface InvoiceSettings {
   currency?: string;
-  /** Locale used for number formatting, such as `en-US` or `nl-NL`. */
+  /** Locale used for number formatting, such as `en-US`. */
   locale?: string;
   taxNotation?: string;
   marginTop?: number;
@@ -121,7 +121,7 @@ export interface ProductCalculations {
   total: number;
 }
 
-/** Total tax grouped by tax rate, for example `{ 21: 42 }`. */
+/** Total tax grouped by tax rate, for example `{ 8.25: 16.5 }`. */
 export type TaxCalculations = Record<number, number>;
 
 /** Successful API response, including any additional fields returned by the server. */

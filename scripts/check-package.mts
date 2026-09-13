@@ -232,18 +232,23 @@ const commonjsError: commonjs.EasyInvoiceError = new commonjs.EasyInvoiceError("
     stdio: "inherit",
   });
 
-  // Type-check the documented example without contacting the hosted API.
+  // Check both documented examples without contacting the hosted API.
   const example = readFileSync(
+    join(root, "examples/create-invoice.js"),
+    "utf8",
+  ).replace(/\r\n/g, "\n");
+  writeFileSync(join(consumer, "example.js"), example);
+  const typescriptExample = readFileSync(
     join(root, "examples/create-invoice.ts"),
     "utf8",
   ).replace(/\r\n/g, "\n");
   assert.ok(
     readFileSync(join(root, "README.md"), "utf8")
       .replace(/\r\n/g, "\n")
-      .includes(["```ts", example.trim(), "```"].join("\n")),
+      .includes(["```ts", typescriptExample.trim(), "```"].join("\n")),
     "The README example must match examples/create-invoice.ts.",
   );
-  writeFileSync(join(consumer, "example.ts"), example);
+  writeFileSync(join(consumer, "example.ts"), typescriptExample);
   writeFileSync(
     join(consumer, "tsconfig.example.json"),
     JSON.stringify({
@@ -256,6 +261,31 @@ const commonjsError: commonjs.EasyInvoiceError = new commonjs.EasyInvoiceError("
     [compiler, "--project", "tsconfig.example.json"],
     { cwd: consumer, stdio: "inherit" },
   );
+  writeFileSync(
+    join(consumer, "check-example.mjs"),
+    `
+import assert from "node:assert/strict";
+import { readFileSync, rmSync } from "node:fs";
+const pdf = "JVBERi0xLjcK";
+let requests = 0;
+globalThis.fetch = async () => {
+  requests++;
+  return Response.json({ data: { pdf } });
+};
+rmSync("invoice.pdf", { force: true });
+await import(process.argv[2]);
+assert.equal(requests, 1);
+assert.equal(readFileSync("invoice.pdf").toString("base64"), pdf);
+`,
+  );
+  execFileSync(runtime, ["check-example.mjs", "./example.js"], {
+    cwd: consumer,
+    stdio: "inherit",
+  });
+  execFileSync(process.execPath, ["check-example.mjs", "./example.ts"], {
+    cwd: consumer,
+    stdio: "inherit",
+  });
   console.log(
     "Packed package passed isolated CommonJS, ESM, TypeScript, and README example checks.",
   );
