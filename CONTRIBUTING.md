@@ -31,7 +31,9 @@ and the pull request title, which becomes the commit message when squash merging
 
 `pnpm run test:coverage` writes `coverage/lcov.info`, using source maps to report coverage against the TypeScript
 source. Coverage checks require at least 90% aggregate line, branch, and function coverage.
-After successful checks on pushes to `master`, CI uploads this report to Codecov from the Node.js 24 job.
+CI uploads this report to Codecov on every push and pull request. A failed upload is shown as a failed step with an
+error annotation on the run, but it does not fail the job, so a Codecov problem never blocks a release. If the step
+fails on every run, the `CODECOV_TOKEN` secret or the repository's Codecov setup is wrong rather than Codecov itself.
 The README badge reads the latest `master` coverage from Codecov; no README edits are needed when coverage changes.
 The repository must be enabled in Codecov with its upload token stored in the GitHub Actions secret `CODECOV_TOKEN`.
 

@@ -56,7 +56,9 @@ jobs:
       - name: Check the package on the minimum supported Node.js version
         run: pnpm run test:package "$MINIMUM_NODE"
       - name: Upload coverage to Codecov
-        if: github.event_name == 'push'
+        # A failed upload is shown on the run as a failed step, but it must not fail the job,
+        # because the release workflow only runs after a successful CI run on master.
+        continue-on-error: true
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: coverage/lcov.info
