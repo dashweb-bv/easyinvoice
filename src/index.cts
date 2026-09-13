@@ -10,7 +10,6 @@ const easyinvoice: typeof client.default = client.default;
 namespace easyinvoice {
   export type EasyInvoiceError = EasyInvoiceErrorClass;
   export type EasyInvoiceErrorOptions = types.EasyInvoiceErrorOptions;
-  export type CreateInvoiceOptions = types.CreateInvoiceOptions;
   export type InvoiceSenderOrClient = types.InvoiceSenderOrClient;
   export type InvoiceProduct = types.InvoiceProduct;
   export type InvoiceSettings = types.InvoiceSettings;

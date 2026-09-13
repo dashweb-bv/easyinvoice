@@ -33,9 +33,7 @@ const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
 try {
-  const result = await easyinvoice.createInvoice(data, {
-    signal: AbortSignal.timeout(30_000),
-  });
+  const result = await easyinvoice.createInvoice(data);
   await writeFile("invoice.pdf", result.pdf, "base64");
 } catch (error) {
   if (error instanceof EasyInvoiceError) {

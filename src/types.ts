@@ -95,14 +95,6 @@ export interface InvoiceData {
   customize?: InvoiceCustomizations;
 }
 
-/** Per-request options; none of them are sent to the API. */
-export interface CreateInvoiceOptions {
-  /** Cancels the request, for example `AbortSignal.timeout(30_000)`. */
-  signal?: AbortSignal;
-  /** Replaces the global `fetch`, for proxies or tests. */
-  fetch?: typeof globalThis.fetch;
-}
-
 /** Constructor options for `EasyInvoiceError`. */
 export interface EasyInvoiceErrorOptions {
   status?: number;

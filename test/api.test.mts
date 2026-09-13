@@ -48,7 +48,6 @@ test("createInvoice preserves the request and returns the full API result", asyn
   assert.equal(headers.get("content-type"), "application/json");
   assert.equal(headers.get("easyinvoice-source"), "npm");
   assert.equal(headers.has("authorization"), false);
-  assert.equal(init!.signal, undefined);
 });
 
 test("createInvoice sends a nonblank API key without modifying its value", async (t) => {
@@ -141,6 +140,63 @@ test("createInvoice wraps network failures and keeps the cause", async (t) => {
   });
 });
 
+for (const phase of ["request", "response body"] as const) {
+  test(`createInvoice aborts a stalled ${phase} at its internal deadline`, async (t) => {
+    const controller = new AbortController();
+    const reason = new DOMException("Deadline exceeded", "TimeoutError");
+    // Fetch rejects with the timeout reason; body reads can reject with AbortError.
+    const failure =
+      phase === "request"
+        ? reason
+        : new DOMException("The operation was aborted", "AbortError");
+    t.mock.method(AbortSignal, "timeout", (delay: number) => {
+      assert.equal(delay, 30_000);
+      return controller.signal;
+    });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const stall = () =>
+      new Promise<never>((_resolve, reject) => {
+        controller.signal.addEventListener(
+          "abort",
+          () => {
+            reject(failure);
+          },
+          { once: true },
+        );
+        markStarted();
+      });
+    const response = Response.json({ data: result });
+    if (phase === "response body") t.mock.method(response, "text", stall);
+    const request = t.mock.method(
+      globalThis,
+      "fetch",
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        assert.equal(init?.signal, controller.signal);
+        return phase === "request" ? stall() : response;
+      },
+    );
+
+    const pending = createInvoice({});
+    const rejected = assert.rejects(pending, (error) => {
+      assert.ok(error instanceof EasyInvoiceError);
+      assert.equal(
+        error.message,
+        "Invoice API request timed out after 30 seconds.",
+      );
+      assert.equal(error.status, undefined);
+      assert.equal(error.cause, failure);
+      return true;
+    });
+    await started;
+    controller.abort(reason);
+    await rejected;
+    assert.equal(request.mock.callCount(), 1);
+  });
+}
+
 for (const [name, body, message] of [
   ["invalid JSON", "not JSON", "expected JSON"],
   ["null response", "null", "missing PDF"],
@@ -183,24 +239,6 @@ test("createInvoice rejects invalid invoice data before making a request", async
   assert.equal(request.mock.callCount(), 0);
 });
 
-test("createInvoice rejects invalid options before making a request", async (t) => {
-  const request = t.mock.method(globalThis, "fetch", async () =>
-    Response.json({ data: result }),
-  );
-  for (const options of [
-    null,
-    "options",
-    [],
-    { signal: "nope" },
-    { signal: {} },
-    { fetch: 42 },
-    { fetch: {} },
-  ]) {
-    await assert.rejects(createInvoice({}, options as never), TypeError);
-  }
-  assert.equal(request.mock.callCount(), 0);
-});
-
 test("createInvoice rejects invalid headers without exposing the API key", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
@@ -228,54 +266,6 @@ test("createInvoice rejects unserializable data without making a request", async
   circular.self = circular;
   await assert.rejects(createInvoice(circular as never), TypeError);
   assert.equal(request.mock.callCount(), 0);
-});
-
-test("createInvoice forwards the signal and rejects with the abort reason", async (t) => {
-  const controller = new AbortController();
-  const reason = new Error("cancelled");
-  const request = t.mock.method(
-    globalThis,
-    "fetch",
-    async (_url: string | URL | Request, init?: RequestInit) => {
-      assert.equal(init?.signal, controller.signal);
-      controller.signal.throwIfAborted();
-      return Response.json({ data: result });
-    },
-  );
-
-  assert.deepEqual(
-    await createInvoice({}, { signal: controller.signal }),
-    result,
-  );
-  controller.abort(reason);
-  await assert.rejects(
-    createInvoice({}, { signal: controller.signal }),
-    (error) => error === reason,
-  );
-  assert.equal(request.mock.callCount(), 2);
-});
-
-test("createInvoice uses an injected fetch instead of the global one", async (t) => {
-  const global = t.mock.method(globalThis, "fetch", async () => {
-    throw new Error("The global fetch must not be used.");
-  });
-  const custom = t.mock.fn(
-    async (_url: string | URL | Request, _init?: RequestInit) =>
-      Response.json({ data: result }),
-  );
-
-  assert.deepEqual(
-    await createInvoice(
-      { apiKey: "key" },
-      { fetch: custom as unknown as typeof fetch },
-    ),
-    result,
-  );
-  assert.equal(global.mock.callCount(), 0);
-  assert.equal(custom.mock.callCount(), 1);
-  const [url, init] = custom.mock.calls[0]!.arguments;
-  assert.equal(url, endpoint);
-  assert.equal(new Headers(init!.headers).get("authorization"), "Bearer key");
 });
 
 test("concurrent calls keep credentials and results independent", async (t) => {

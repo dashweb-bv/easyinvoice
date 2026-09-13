@@ -155,16 +155,6 @@ assert.equal(failure.name, "EasyInvoiceError");
 assert.equal(failure.status, 429);
 assert.deepEqual(failure.body, { message: "Too Many Requests" });
 
-const controller = new AbortController();
-let injected = 0;
-const customFetch = async (url, options) => {
-  injected++;
-  assert.equal(options.signal, controller.signal);
-  return Response.json({ data: result });
-};
-assert.deepEqual(await esm.createInvoice(data, { fetch: customFetch, signal: controller.signal }), result);
-assert.equal(injected, 1);
-assert.equal(requests, 2);
 console.log("Packed package runtime passed on Node.js " + process.version + ".");
 `,
   );
@@ -175,7 +165,7 @@ import type {
   InvoiceSenderOrClient, InvoiceProduct, InvoiceSettings, InvoiceImages,
   InvoiceTranslations, InvoiceInformation, InvoiceData, InvoiceCustomizations,
   InvoiceCalculations, ProductCalculations, TaxCalculations, CreateInvoiceResult,
-  CreateInvoiceOptions, EasyInvoiceErrorOptions,
+  EasyInvoiceErrorOptions,
 } from "easyinvoice";
 const data: InvoiceData = {
   products: [{ quantity: 1.5 }, { quantity: "2" }],
@@ -183,8 +173,7 @@ const data: InvoiceData = {
   settings: { width: "100mm", format: "A4", taxNotation: "vat" },
   translate: { taxNotation: "btw", rounding: "Rounding" },
 };
-const options: CreateInvoiceOptions = { signal: AbortSignal.timeout(1000), fetch };
-const created: Promise<CreateInvoiceResult> = easyinvoice.createInvoice(data, options);
+const created: Promise<CreateInvoiceResult> = easyinvoice.createInvoice(data);
 const named: Promise<CreateInvoiceResult> = createInvoice(data);
 const errorOptions: EasyInvoiceErrorOptions = { status: 500, body: null };
 const error: EasyInvoiceError = new EasyInvoiceError("Failed", errorOptions);
@@ -196,8 +185,8 @@ const typo: InvoiceData = { prodcuts: [] };
 createInvoice({ apiKey: 123 });
 // @ts-expect-error Unsupported page orientation.
 const invalidSettings: InvoiceSettings = { orientation: "sideways" };
-// @ts-expect-error Options must be an object.
-createInvoice(data, () => {});
+// @ts-expect-error Invoice creation accepts only invoice data.
+createInvoice(data, {});
 // @ts-expect-error The client has no PDF rendering methods.
 easyinvoice.render("pdf");
 // @ts-expect-error The stateless API does not expose a client class.

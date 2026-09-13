@@ -66,9 +66,7 @@ const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
 try {
-  const result = await easyinvoice.createInvoice(data, {
-    signal: AbortSignal.timeout(30_000),
-  });
+  const result = await easyinvoice.createInvoice(data);
   await writeFile("invoice.pdf", result.pdf, "base64");
 } catch (error) {
   if (error instanceof EasyInvoiceError) {
@@ -119,7 +117,7 @@ easyinvoice
 
 ## API
 
-`createInvoice(data: InvoiceData, options?: CreateInvoiceOptions): Promise<CreateInvoiceResult>` sends invoice
+`createInvoice(data: InvoiceData): Promise<CreateInvoiceResult>` sends invoice
 data to the hosted API and returns its PDF and calculations. Calls are independent; the client keeps no invoice state.
 
 Use the default export as shown above, or import the function directly:
@@ -130,15 +128,6 @@ import { createInvoice } from "easyinvoice";
 const result = await createInvoice(data);
 ```
 
-### Options
-
-| Option   | Purpose                                                                                       |
-| -------- | --------------------------------------------------------------------------------------------- |
-| `signal` | An `AbortSignal` that cancels the request, for example `AbortSignal.timeout(30_000)`          |
-| `fetch`  | A replacement for the global `fetch`, for example to route requests through a proxy or a mock |
-
-No timeout is applied by default; pass `signal` to bound the request.
-
 ### Errors
 
 - Invalid arguments reject with a `TypeError` before any request is made.
@@ -146,8 +135,7 @@ No timeout is applied by default; pass `signal` to bound the request.
   as parsed JSON or plain text), and the message includes the HTTP status and the API's `message` field when present.
   Network failures leave `status` undefined and expose the underlying error as `cause`.
 - Malformed successful responses also reject with an `EasyInvoiceError`.
-- A request cancelled through `signal` rejects with the abort reason, such as a `TimeoutError`, so the usual abort
-  handling applies.
+- Requests time out after 30 seconds, including downloading the response, and reject with an `EasyInvoiceError`.
 
 ```ts
 import { createInvoice, EasyInvoiceError } from "easyinvoice";

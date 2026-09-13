@@ -1,22 +1,17 @@
 import { EasyInvoiceError } from "./error.js";
-import type {
-  CreateInvoiceOptions,
-  CreateInvoiceResult,
-  InvoiceData,
-} from "./types.js";
+import type { CreateInvoiceResult, InvoiceData } from "./types.js";
 
 const endpoint = "https://api.easyinvoice.cloud/v2/free/invoices";
+const requestTimeoutMs = 30_000;
 
 /**
  * Creates a PDF invoice through the hosted API. For server-side use only.
  *
- * Rejects with a `TypeError` for invalid arguments, with the abort reason when
- * `options.signal` is aborted, and with an {@link EasyInvoiceError} for failed
- * requests and malformed responses.
+ * Rejects with a `TypeError` for invalid arguments and with an
+ * {@link EasyInvoiceError} for failed requests and malformed responses.
  */
 export async function createInvoice(
   data: InvoiceData,
-  options: CreateInvoiceOptions = {},
 ): Promise<CreateInvoiceResult> {
   // Validate as unknown: JavaScript callers are not bound by the declared types.
   const input: unknown = data;
@@ -26,21 +21,7 @@ export async function createInvoice(
   if (input.apiKey !== undefined && typeof input.apiKey !== "string") {
     throw new TypeError("apiKey must be a string.");
   }
-  const settings: unknown = options;
-  if (!isObject(settings)) {
-    throw new TypeError("Options must be an object.");
-  }
-  if (
-    settings.signal !== undefined &&
-    !(settings.signal instanceof AbortSignal)
-  ) {
-    throw new TypeError("options.signal must be an AbortSignal.");
-  }
-  if (settings.fetch !== undefined && typeof settings.fetch !== "function") {
-    throw new TypeError("options.fetch must be a function.");
-  }
   const apiKey = input.apiKey;
-  const { signal, fetch: request = globalThis.fetch } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -59,8 +40,10 @@ export async function createInvoice(
 
   let response: Response;
   let text: string;
+  // The same deadline covers both the request and reading the response body.
+  const signal = AbortSignal.timeout(requestTimeoutMs);
   try {
-    response = await request(endpoint, {
+    response = await fetch(endpoint, {
       method: "POST",
       headers,
       body,
@@ -68,8 +51,12 @@ export async function createInvoice(
     });
     text = await response.text();
   } catch (error) {
-    if (signal?.aborted) throw error;
-    throw new EasyInvoiceError("Invoice API request failed.", { cause: error });
+    throw new EasyInvoiceError(
+      signal.aborted
+        ? `Invoice API request timed out after ${String(requestTimeoutMs / 1000)} seconds.`
+        : "Invoice API request failed.",
+      { cause: error },
+    );
   }
 
   let parsed: unknown = text;
