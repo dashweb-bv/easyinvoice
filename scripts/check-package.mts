@@ -175,12 +175,19 @@ const data: InvoiceData = {
 };
 const created: Promise<CreateInvoiceResult> = easyinvoice.createInvoice(data);
 const named: Promise<CreateInvoiceResult> = createInvoice(data);
+const createdWithoutData: Promise<CreateInvoiceResult> = easyinvoice.createInvoice();
+const namedWithoutData: Promise<CreateInvoiceResult> = createInvoice();
+const namedWithUndefined: Promise<CreateInvoiceResult> = createInvoice(undefined);
 const errorOptions: EasyInvoiceErrorOptions = { status: 500, body: null };
 const error: EasyInvoiceError = new EasyInvoiceError("Failed", errorOptions);
 const status: number | undefined = error.status;
 const isError: boolean = error instanceof Error && error instanceof easyinvoice.EasyInvoiceError;
 // @ts-expect-error Unknown top-level fields are rejected.
 const typo: InvoiceData = { prodcuts: [] };
+// @ts-expect-error Supplied invoice data still rejects unknown fields.
+createInvoice({ prodcuts: [] });
+// @ts-expect-error Null is not invoice data.
+createInvoice(null);
 // @ts-expect-error API keys must be strings.
 createInvoice({ apiKey: 123 });
 // @ts-expect-error Unsupported page orientation.
@@ -199,6 +206,7 @@ new easyinvoice.EasyInvoice();
 import commonjs = require("easyinvoice");
 const commonjsData: commonjs.InvoiceData = data;
 const commonjsResult: Promise<commonjs.CreateInvoiceResult> = commonjs.createInvoice(commonjsData);
+const commonjsWithoutData: Promise<commonjs.CreateInvoiceResult> = commonjs.createInvoice();
 const commonjsError: commonjs.EasyInvoiceError = new commonjs.EasyInvoiceError("Failed");
 `,
   );

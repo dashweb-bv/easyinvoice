@@ -20,6 +20,27 @@ test("both entry points expose the same function and error class", () => {
   assert.equal(easyinvoice.EasyInvoiceError, EasyInvoiceError);
 });
 
+test("createInvoice sends empty data for omitted, undefined, and empty arguments", async (t) => {
+  const request = t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ data: result }),
+  );
+
+  for (const create of [createInvoice, easyinvoice.createInvoice]) {
+    assert.deepEqual(await create(), result);
+    assert.deepEqual(await create(undefined), result);
+    assert.deepEqual(await create({}), result);
+  }
+
+  assert.equal(request.mock.callCount(), 6);
+  for (const call of request.mock.calls) {
+    const [url, init] = call.arguments;
+    assert.equal(url, endpoint);
+    assert.equal(init!.method, "POST");
+    assert.deepEqual(JSON.parse(init!.body as string), { data: {} });
+    assert.equal(new Headers(init!.headers).has("authorization"), false);
+  }
+});
+
 test("createInvoice preserves the request and returns the full API result", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
@@ -230,7 +251,7 @@ test("createInvoice rejects invalid invoice data before making a request", async
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
   );
-  for (const data of [undefined, null, [], "invoice", 42, true]) {
+  for (const data of [null, [], "invoice", 42, true]) {
     await assert.rejects(createInvoice(data as never), TypeError);
   }
   for (const apiKey of [null, 123, false, [], {}]) {
