@@ -1,7 +1,7 @@
 # Easy Invoice
 
 [![npm version](https://img.shields.io/npm/v/easyinvoice.svg)](https://www.npmjs.com/package/easyinvoice)
-[![Build](https://github.com/dashweb-bv/easyinvoice/actions/workflows/build.yml/badge.svg)](https://github.com/dashweb-bv/easyinvoice/actions/workflows/build.yml)
+[![CI](https://github.com/dashweb-bv/easyinvoice/actions/workflows/ci.yml/badge.svg)](https://github.com/dashweb-bv/easyinvoice/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/dashweb-bv/easyinvoice/branch/master/graph/badge.svg)](https://codecov.io/gh/dashweb-bv/easyinvoice)
 [![License](https://img.shields.io/npm/l/easyinvoice.svg)](LICENSE)
 

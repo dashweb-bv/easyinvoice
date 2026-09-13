@@ -70,8 +70,10 @@ semantic-release does not support version 10's hooks yet. Upgrade it when the re
 
 ## Releases
 
-Merge Conventional Commits into `master`; the build workflow releases automatically after all checks pass.
-semantic-release chooses the highest required bump since the last release:
+Merge Conventional Commits into `master`. The CI workflow (`.github/workflows/ci.yml`) runs the checks for pull
+requests and pushes, and the release workflow (`.github/workflows/release.yml`) runs after CI succeeds for a push
+to `master`, releasing exactly the commit that CI checked. semantic-release chooses the highest required bump
+since the last release:
 
 - Breaking changes (`feat!:`, `refactor!:`, or a `BREAKING CHANGE:` footer): major.
 - Features (`feat:`): minor.
@@ -85,7 +87,9 @@ release tags manually.
 
 Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers): the release job authenticates
 through GitHub's OIDC token (`id-token: write`) and npm generates provenance attestations automatically.
-No npm token is stored in the repository secrets. The workflow's `GITHUB_TOKEN` needs `contents: write` to
-create the release and tag; repository rules must allow the workflow to create tags.
+The trusted publisher on npm is registered for this repository's `release.yml` workflow, and no npm token is
+stored in the repository secrets. The workflow's `GITHUB_TOKEN` needs `contents: write` to create the release
+and tag; repository rules must allow the workflow to create tags.
 
-Pull requests run checks without publishing. Both jobs use Node.js 24 and Ubuntu ARM64, with Husky disabled in CI.
+Pull requests run checks without publishing. Both workflows use Node.js 24 and Ubuntu ARM64, with Husky disabled
+in CI.
