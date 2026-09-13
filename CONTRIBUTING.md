@@ -14,7 +14,7 @@ pnpm run check
 `pnpm run check` builds the package, checks types, ESLint, and Prettier formatting, runs the tests with coverage,
 and validates the npm tarball with [publint](https://publint.dev), [Are the types wrong?](https://arethetypeswrong.github.io),
 and `scripts/check-package.mts`. The package check also verifies that the README's main example matches
-`examples/create-invoice.mts` and compiles against the declarations from the installed tarball, without running
+`examples/create-invoice.ts` and compiles against the declarations from the installed tarball, without running
 the example or contacting the API. Tests mock the network and do not send invoice data to the hosted service.
 Dependency installation requires internet access. Use `pnpm run format` to format and auto-fix changes.
 

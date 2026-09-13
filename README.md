@@ -31,8 +31,8 @@ This TypeScript example runs on the server. Omit `apiKey` for free access; use a
 production account key. Keep production API keys on your server, never in browser code or a public bundle.
 
 ```ts
-import { writeFile } from "node:fs/promises";
-import easyinvoice, { EasyInvoiceError, type InvoiceData } from "easyinvoice";
+import { writeFile } from "fs/promises";
+import easyinvoice, { type InvoiceData } from "easyinvoice";
 
 const data: InvoiceData = {
   mode: "development",
@@ -65,28 +65,23 @@ const data: InvoiceData = {
 const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
-try {
-  const result = await easyinvoice.createInvoice(data);
-  await writeFile("invoice.pdf", result.pdf, "base64");
-} catch (error) {
-  if (error instanceof EasyInvoiceError) {
-    console.error(`Invoice creation failed: ${error.message}`, error.body);
-  } else {
-    console.error("Invoice creation failed.", error);
-  }
-  process.exitCode = 1;
-}
+const result = await easyinvoice.createInvoice(data);
+await writeFile("invoice.pdf", result.pdf, "base64");
 ```
 
-The runnable source is [examples/create-invoice.mts](examples/create-invoice.mts).
-From a repository checkout on Node.js 24, run `pnpm run build`, then `node examples/create-invoice.mts`.
+`fs/promises` provides file operations that work with `await`; `writeFile` from `fs` requires a callback.
+See [Errors](#errors) for handling failed requests.
+
+The runnable source is [examples/create-invoice.ts](examples/create-invoice.ts).
+From a repository checkout on Node.js 24, run `pnpm run build`, then `node examples/create-invoice.ts`.
 Running it contacts the hosted API and writes `invoice.pdf`. Tests type-check the example without running it.
-Top-level `await` examples use ES modules (`.mjs`, `.mts`, or `"type": "module"` in `package.json`).
+These examples use ES modules. Set `"type": "module"` in your `package.json`, as this repository does.
+For JavaScript, use `import easyinvoice from "easyinvoice";`, remove `: InvoiceData`, and save the example as `.js`.
 
 CommonJS is supported too:
 
 ```js
-const { writeFileSync } = require("node:fs");
+const { writeFile } = require("fs/promises");
 const easyinvoice = require("easyinvoice");
 
 easyinvoice
@@ -94,15 +89,9 @@ easyinvoice
     mode: "development",
     products: [{ quantity: 1, description: "Consulting", taxRate: 21, price: 75 }],
   })
-  .then((result) => {
-    writeFileSync("invoice.pdf", result.pdf, "base64");
-  })
+  .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
   .catch((error) => {
-    if (error instanceof easyinvoice.EasyInvoiceError) {
-      console.error(`Invoice creation failed: ${error.message}`, error.body);
-    } else {
-      console.error("Invoice creation failed.", error);
-    }
+    console.error(error);
     process.exitCode = 1;
   });
 ```
@@ -222,7 +211,7 @@ Supply base64 file contents, not image URLs. The logo accepts an image; the back
 or a PDF. In Node.js, read local files as base64:
 
 ```ts
-import { readFile } from "node:fs/promises";
+import { readFile } from "fs/promises";
 
 const images = {
   logo: await readFile("logo.png", "base64"),
