@@ -1,6 +1,10 @@
 import { writeFile } from "fs/promises";
 import easyinvoice from "easyinvoice";
 
+/**
+ * Invoice fields for a development request that produces an EXAMPLE watermark.
+ * @type {import("easyinvoice").InvoiceData}
+ */
 const data = {
   mode: "development",
   sender: {

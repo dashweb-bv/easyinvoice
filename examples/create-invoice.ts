@@ -1,6 +1,7 @@
 import { writeFile } from "fs/promises";
 import easyinvoice, { type InvoiceData } from "easyinvoice";
 
+/** Invoice fields for a development request that produces an EXAMPLE watermark. */
 const data: InvoiceData = {
   mode: "development",
   sender: {
@@ -37,5 +38,7 @@ const data: InvoiceData = {
 const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
-const result = await easyinvoice.createInvoice(data);
-await writeFile("invoice.pdf", result.pdf, "base64");
+easyinvoice
+  .createInvoice(data)
+  .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
+  .catch((error) => console.error(error));
