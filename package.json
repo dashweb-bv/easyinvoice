@@ -1,31 +1,19 @@
 {
   "name": "easyinvoice",
-  "version": "3.0.47",
-  "description": "Easily create beautiful PDF invoices.",
+  "version": "0.0.0-development",
+  "packageManager": "pnpm@12.3.4",
+  "description": "Create PDF invoices from Node.js through the Easy Invoice API.",
   "license": "MIT",
   "homepage": "https://budgetinvoice.com",
   "author": {
     "name": "Danny Veldhoen"
   },
-  "scripts": {
-    "prebuild": "rimraf dist",
-    "compile": "tsc",
-    "build": "npm run compile && node esbuild.config.js",
-    "changelog": "changelog",
-    "package": "npm run lint && npm run build && npm run test && git add -A dist",
-    "lint": "eslint . --ext .ts --fix",
-    "test": "jest",
-    "test:coverage": "jest --coverage"
-  },
-  "main": "index.js",
-  "module": "index-module.js",
-  "types": "./src/lib/easyinvoice.d.ts",
-  "bugs": {
-    "url": "https://github.com/dveldhoen/easyinvoice/issues"
-  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dveldhoen/easyinvoice.git"
+    "url": "git+https://github.com/dashweb-bv/easyinvoice.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dashweb-bv/easyinvoice/issues"
   },
   "keywords": [
     "invoice",
@@ -33,36 +21,67 @@
     "estimate",
     "bill",
     "pdf",
-    "generator"
+    "generator",
+    "typescript",
+    "api-client"
   ],
-  "peerDependencies": {
-    "pdfjs-dist": "^3.4.120"
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mts",
+    "typecheck": "tsc --noEmit",
+    "lint": "pnpm run typecheck && eslint . && prettier --check .",
+    "lint:staged": "lint-staged",
+    "lint:commits": "commitlint",
+    "format": "prettier --write . && eslint --fix .",
+    "test": "pnpm run build && node --test test/*.test.mts",
+    "test:coverage": "pnpm run build && node scripts/coverage.mts",
+    "test:package": "publint --strict && attw --pack . && node scripts/check-package.mts",
+    "check": "pnpm run build && pnpm run lint && tsc -p tsconfig.check.json && node scripts/coverage.mts && pnpm run test:package",
+    "release": "semantic-release",
+    "prepare": "husky",
+    "prepack": "pnpm run build"
   },
   "devDependencies": {
-    "@babel/core": "^7.21.0",
-    "@babel/preset-env": "^7.20.2",
-    "@babel/preset-typescript": "^7.21.0",
-    "@jest/globals": "^29.5.0",
-    "@types/file-saver": "^2.0.5",
-    "@types/is-base64": "^1.1.1",
-    "@types/jest": "^29.4.0",
-    "@typescript-eslint/eslint-plugin": "^5.54.1",
-    "@typescript-eslint/parser": "^5.54.1",
-    "babel-jest": "^29.5.0",
-    "esbuild": "^0.17.11",
-    "eslint": "^7.32.0",
-    "jest": "^29.5.0",
-    "jest-environment-jsdom": "^29.5.0",
-    "prettier": "^3.2.4",
-    "rimraf": "^3.0.2",
-    "ts-jest": "^29.0.5",
-    "ts-node": "^10.9.1"
-  },
-  "dependencies": {
-    "axios": "^0.27.2",
-    "file-saver": "^2.0.5",
-    "is-base64": "^1.1.0",
-    "js-base64": "^3.7.5",
-    "print-js": "^1.6.0"
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@eslint/js": "^10.0.1",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^12.0.9",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "@types/node": "^24.13.0",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.0",
+    "prettier": "^3.9.6",
+    "publint": "^0.3.24",
+    "semantic-release": "^25.0.9",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.69.0"
   }
 }

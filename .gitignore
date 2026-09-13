@@ -1,5 +1,9 @@
 .idea/
 node_modules/
+.pnpm-store/
 coverage/
 .DS_Store
 temp
+dist/
+*.tgz
+/invoice.pdf

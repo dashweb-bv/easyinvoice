@@ -1,0 +1,2 @@
+# Delay adoption of freshly published versions (minutes) to reduce supply-chain exposure.
+minimumReleaseAge: 10080

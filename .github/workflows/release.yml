@@ -1,0 +1,46 @@
+name: Release
+
+# Runs after the CI workflow succeeds for a push to master and publishes with semantic-release.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  HUSKY: 0
+
+jobs:
+  release:
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      # Pushes the version tag and creates the GitHub release.
+      contents: write
+      # Lets npm trusted publishing authenticate this workflow through OIDC; no npm token is needed.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Release exactly the commit that CI checked.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          cache: true
+          install: false
+      - run: pnpm install --frozen-lockfile
+      - name: Version and publish
+        run: pnpm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
