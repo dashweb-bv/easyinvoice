@@ -106,7 +106,7 @@ easyinvoice
 
 ## API
 
-`createInvoice(data: InvoiceData): Promise<CreateInvoiceResult>` sends invoice
+`createInvoice(data?: InvoiceData): Promise<CreateInvoiceResult>` sends invoice
 data to the hosted API and returns its PDF and calculations. Calls are independent; the client keeps no invoice state.
 
 Use the default export as shown above, or import the function directly:

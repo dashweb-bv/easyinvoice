@@ -6,12 +6,13 @@ const requestTimeoutMs = 30_000;
 
 /**
  * Creates a PDF invoice through the hosted API. For server-side use only.
+ * Omitted or undefined data defaults to an empty object.
  *
  * Rejects with a `TypeError` for invalid arguments and with an
  * {@link EasyInvoiceError} for failed requests and malformed responses.
  */
 export async function createInvoice(
-  data: InvoiceData,
+  data: InvoiceData = {},
 ): Promise<CreateInvoiceResult> {
   // Validate as unknown: JavaScript callers are not bound by the declared types.
   const input: unknown = data;
