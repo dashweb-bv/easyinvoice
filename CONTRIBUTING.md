@@ -14,9 +14,15 @@ pnpm run check
 `pnpm run check` builds the package, checks types, ESLint, and Prettier formatting, runs the tests with coverage,
 and validates the npm tarball with [publint](https://publint.dev), [Are the types wrong?](https://arethetypeswrong.github.io),
 and `scripts/check-package.mts`. The package check also verifies that the README's main example matches
-`examples/create-invoice.ts` and compiles against the declarations from the installed tarball, without running
-the example or contacting the API. Tests mock the network and do not send invoice data to the hosted service.
+`examples/create-invoice.ts`, type-checks it, and runs both the TypeScript and JavaScript examples against the
+installed tarball with a mocked API response. The TypeScript example runs on the development Node.js version;
+the JavaScript example also runs on the minimum supported Node.js version in CI.
+Tests mock the network and do not send invoice data to the hosted service.
 Dependency installation requires internet access. Use `pnpm run format` to format and auto-fix changes.
+
+To run an example from a repository checkout on Node.js 24, run `pnpm run build`, then
+`node examples/create-invoice.js` or `node examples/create-invoice.ts`.
+These manual runs contact the hosted API and write `invoice.pdf`.
 
 ESLint runs type-aware rules against the tests, which import the built `dist/` entry points, so build before
 linting. `pnpm run check` and the pre-commit hook do this automatically.

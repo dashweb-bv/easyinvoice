@@ -27,7 +27,9 @@ yarn add easyinvoice
 
 ## Create an invoice
 
-This TypeScript example runs on the server. Omit `apiKey` for free access; use an environment variable for a
+Save this TypeScript example as `create-invoice.ts` in your project after installing `easyinvoice`.
+Both the JavaScript and TypeScript examples use ES modules: set `"type": "module"` in your `package.json`.
+It runs on the server. Omit `apiKey` for free access; use an environment variable for a
 production account key. Keep production API keys on your server, never in browser code or a public bundle.
 
 ```ts
@@ -38,28 +40,33 @@ const data: InvoiceData = {
   mode: "development",
   sender: {
     company: "Sample Corp",
-    address: "Sample Street 123",
-    zip: "1234 AB",
-    city: "Sampletown",
-    country: "The Netherlands",
+    address: "123 Main Street",
+    zip: "78701",
+    city: "Austin, TX",
+    country: "United States",
   },
   client: {
     company: "Client Corp",
-    address: "Client Street 456",
-    zip: "4567 CD",
-    city: "Clienttown",
-    country: "The Netherlands",
+    address: "456 Oak Avenue",
+    zip: "75201",
+    city: "Dallas, TX",
+    country: "United States",
   },
   information: {
     number: "2026.0001",
-    date: "11-09-2026",
-    dueDate: "25-09-2026",
+    date: "09/11/2026",
+    dueDate: "09/25/2026",
   },
   products: [
-    { quantity: 2, description: "Consulting", taxRate: 21, price: 75 },
+    {
+      quantity: 2,
+      description: "Consulting",
+      taxRate: 8.25,
+      price: 75,
+    },
   ],
   bottomNotice: "Please pay within 14 days.",
-  settings: { currency: "EUR", locale: "nl-NL" },
+  settings: { currency: "USD", locale: "en-US", format: "Letter" },
 };
 
 const apiKey = process.env.EASYINVOICE_API_KEY;
@@ -72,11 +79,24 @@ await writeFile("invoice.pdf", result.pdf, "base64");
 `fs/promises` provides file operations that work with `await`; `writeFile` from `fs` requires a callback.
 See [Errors](#errors) for handling failed requests.
 
-The runnable source is [examples/create-invoice.ts](examples/create-invoice.ts).
-From a repository checkout on Node.js 24, run `pnpm run build`, then `node examples/create-invoice.ts`.
-Running it contacts the hosted API and writes `invoice.pdf`. Tests type-check the example without running it.
-These examples use ES modules. Set `"type": "module"` in your `package.json`, as this repository does.
-For JavaScript, use `import easyinvoice from "easyinvoice";`, remove `: InvoiceData`, and save the example as `.js`.
+Run it directly on Node.js 24 or newer:
+
+```sh
+node create-invoice.ts
+```
+
+Node's [built-in TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html#type-stripping)
+strips the types without type-checking. No `ts-node` or build step is needed for these examples.
+
+The runnable sources are [examples/create-invoice.ts](examples/create-invoice.ts) and
+[examples/create-invoice.js](examples/create-invoice.js). For plain JavaScript, save the JavaScript version
+as `create-invoice.js` and run:
+
+```sh
+node create-invoice.js
+```
+
+Running either example contacts the hosted API and writes `invoice.pdf`.
 
 CommonJS is supported too:
 
@@ -87,7 +107,15 @@ const easyinvoice = require("easyinvoice");
 easyinvoice
   .createInvoice({
     mode: "development",
-    products: [{ quantity: 1, description: "Consulting", taxRate: 21, price: 75 }],
+    products: [
+      {
+        quantity: 1,
+        description: "Consulting",
+        taxRate: 8.25,
+        price: 75,
+      },
+    ],
+    settings: { currency: "USD", locale: "en-US", format: "Letter" },
   })
   .then((result) => writeFile("invoice.pdf", result.pdf, "base64"))
   .catch((error) => {
@@ -164,41 +192,41 @@ forwarded to the API at runtime; extend `InvoiceData` to pass them from TypeScri
 ### Currency, language, and layout
 
 `settings.locale` controls number formatting; `settings.currency` controls the currency symbol.
-For example, use `de-DE` with `EUR`, or `en-US` with `USD`. These do not translate invoice labels.
+For US invoices, use `en-US` with `USD`. These do not translate invoice labels.
 
 ```ts
 const settings = {
-  currency: "EUR",
-  locale: "de-DE",
+  currency: "USD",
+  locale: "en-US",
   marginTop: 25,
   marginRight: 25,
   marginBottom: 25,
   marginLeft: 25,
-  format: "A4",
+  format: "Letter",
   orientation: "portrait",
 };
 ```
 
 Supported `format` values are `A3`, `A4`, `A5`, `Legal`, `Letter`, and `Tabloid`.
-For custom dimensions, use `height` and `width` with `px`, `mm`, `cm`, or `in`, such as `"100mm"`.
+For custom dimensions, use `height` and `width` with `px`, `mm`, `cm`, or `in`, such as `"8.5in"`.
 Orientation is `"portrait"` or `"landscape"`. Page layout and formatting are applied by the hosted API.
 
 Use `translate` for labels:
 
 ```ts
 const translate = {
-  invoice: "FACTUUR",
-  number: "Nummer",
-  date: "Datum",
-  dueDate: "Vervaldatum",
-  subtotal: "Subtotaal",
-  rounding: "Afronding",
-  products: "Producten",
-  quantity: "Aantal",
-  price: "Prijs",
-  productTotal: "Totaal",
-  total: "Totaal",
-  taxNotation: "btw",
+  invoice: "INVOICE",
+  number: "Invoice number",
+  date: "Invoice date",
+  dueDate: "Due date",
+  subtotal: "Subtotal",
+  rounding: "Rounding",
+  products: "Items",
+  quantity: "Quantity",
+  price: "Unit price",
+  productTotal: "Amount",
+  total: "Total",
+  taxNotation: "Sales tax",
 };
 ```
 
@@ -293,7 +321,7 @@ The same service can be called without this package. Send JSON with an outer `da
 ```sh
 curl https://api.easyinvoice.cloud/v2/free/invoices \
   -H 'Content-Type: application/json' \
-  -d '{"data":{"mode":"development","products":[{"quantity":1,"description":"Consulting","taxRate":21,"price":75}]}}'
+  -d '{"data":{"mode":"development","products":[{"quantity":1,"description":"Consulting","taxRate":8.25,"price":75}],"settings":{"currency":"USD","locale":"en-US","format":"Letter"}}}'
 ```
 
 For account access, add an `Authorization: Bearer <your-api-key>` header from your server.
@@ -313,7 +341,7 @@ const invoices = await Promise.all([
 
 ## Development and compatibility
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for pnpm setup, checks, and automated releases.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for repository setup, checks, and automated releases.
 Report package bugs in [GitHub issues](https://github.com/dashweb-bv/easyinvoice/issues) and security issues
 as described in [SECURITY.md](SECURITY.md).
 

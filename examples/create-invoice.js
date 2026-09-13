@@ -1,7 +1,7 @@
 import { writeFile } from "fs/promises";
-import easyinvoice, { type InvoiceData } from "easyinvoice";
+import easyinvoice from "easyinvoice";
 
-const data: InvoiceData = {
+const data = {
   mode: "development",
   sender: {
     company: "Sample Corp",
