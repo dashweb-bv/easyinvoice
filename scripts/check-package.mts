@@ -119,9 +119,10 @@ const commonjs = require("easyinvoice");
 assert.deepEqual(Reflect.ownKeys(globalThis), globalKeys);
 assert.equal(esm.default, commonjs);
 assert.equal(esm.createInvoice, commonjs.createInvoice);
+assert.equal(esm.saveInvoice, commonjs.saveInvoice);
 assert.equal(esm.EasyInvoiceError, commonjs.EasyInvoiceError);
-assert.deepEqual(Object.keys(commonjs), ["createInvoice", "EasyInvoiceError"]);
-assert.deepEqual(Object.keys(esm).sort(), ["EasyInvoiceError", "createInvoice", "default"]);
+assert.deepEqual(Object.keys(commonjs), ["createInvoice", "saveInvoice", "EasyInvoiceError"]);
+assert.deepEqual(Object.keys(esm).sort(), ["EasyInvoiceError", "createInvoice", "default", "saveInvoice"]);
 const manifest = require("easyinvoice/package.json");
 assert.equal(manifest.type, "module");
 assert.equal(manifest.sideEffects, false);
@@ -131,13 +132,14 @@ assert.deepEqual(Object.keys(manifest.exports["."]), ["import", "require"]);
 
 const data = { apiKey: "test-account-key", products: [{ quantity: 1, price: 10, taxRate: 20 }] };
 const result = {
-  pdf: "JVBERi0xLjcK",
+  pdfUrl: "https://exports.example.com/invoice.pdf?signature=test",
+  expiresAt: "2099-01-01T00:05:00.000Z",
   calculations: { products: [{ subtotal: 10, tax: 2, total: 12 }], tax: { 20: 2 }, subtotal: 10, total: 12 },
 };
 let requests = 0;
 globalThis.fetch = async (url, options) => {
   requests++;
-  assert.equal(url, "https://api.easyinvoice.cloud/v2/free/invoices");
+  assert.equal(url, "https://api.easyinvoice.cloud/v3/free/invoices");
   assert.equal(options.method, "POST");
   assert.equal(new Headers(options.headers).get("authorization"), "Bearer test-account-key");
   assert.deepEqual(JSON.parse(options.body), { data });
@@ -160,12 +162,12 @@ console.log("Packed package runtime passed on Node.js " + process.version + ".")
   );
   execFileSync(runtime, ["runtime.mjs"], { cwd: consumer, stdio: "inherit" });
 
-  const types = `import easyinvoice, { createInvoice, EasyInvoiceError } from "easyinvoice";
+  const types = `import easyinvoice, { createInvoice, saveInvoice, EasyInvoiceError } from "easyinvoice";
 import type {
   InvoiceSenderOrClient, InvoiceProduct, InvoiceSettings, InvoiceImages,
   InvoiceTranslations, InvoiceInformation, InvoiceData, InvoiceCustomizations,
   InvoiceCalculations, ProductCalculations, TaxCalculations, CreateInvoiceResult,
-  EasyInvoiceErrorOptions,
+  EasyInvoiceErrorOptions, CreateInvoiceBase64Result, CreateInvoiceOptions,
 } from "easyinvoice";
 const data: InvoiceData = {
   products: [{ quantity: 1.5 }, { quantity: "2" }],
@@ -178,6 +180,13 @@ const named: Promise<CreateInvoiceResult> = createInvoice(data);
 const createdWithoutData: Promise<CreateInvoiceResult> = easyinvoice.createInvoice();
 const namedWithoutData: Promise<CreateInvoiceResult> = createInvoice();
 const namedWithUndefined: Promise<CreateInvoiceResult> = createInvoice(undefined);
+const base64: Promise<CreateInvoiceBase64Result> = createInvoice(data, { output: "base64" });
+const urlOutput: Promise<CreateInvoiceResult> = createInvoice(data, { output: "url" });
+const options: CreateInvoiceOptions = { output: Math.random() > 0.5 ? "url" : "base64" };
+const dynamicOutput: Promise<CreateInvoiceResult | CreateInvoiceBase64Result> = createInvoice(data, options);
+const saved: Promise<void> = created.then((invoice) => saveInvoice(invoice, "invoice.pdf"));
+// @ts-expect-error Base64 output has no usable PDF URL for saving.
+base64.then((invoice) => saveInvoice(invoice, "invoice.pdf"));
 const errorOptions: EasyInvoiceErrorOptions = { status: 500, body: null };
 const error: EasyInvoiceError = new EasyInvoiceError("Failed", errorOptions);
 const status: number | undefined = error.status;
@@ -192,8 +201,8 @@ createInvoice(null);
 createInvoice({ apiKey: 123 });
 // @ts-expect-error Unsupported page orientation.
 const invalidSettings: InvoiceSettings = { orientation: "sideways" };
-// @ts-expect-error Invoice creation accepts only invoice data.
-createInvoice(data, {});
+// @ts-expect-error Unsupported output format.
+createInvoice(data, { output: "buffer" });
 // @ts-expect-error The client has no PDF rendering methods.
 easyinvoice.render("pdf");
 // @ts-expect-error The stateless API does not expose a client class.
@@ -207,6 +216,9 @@ import commonjs = require("easyinvoice");
 const commonjsData: commonjs.InvoiceData = data;
 const commonjsResult: Promise<commonjs.CreateInvoiceResult> = commonjs.createInvoice(commonjsData);
 const commonjsWithoutData: Promise<commonjs.CreateInvoiceResult> = commonjs.createInvoice();
+const commonjsBase64: Promise<commonjs.CreateInvoiceBase64Result> = commonjs.createInvoice(data, { output: "base64" });
+const commonjsOptions: commonjs.CreateInvoiceOptions = { output: "url" };
+const commonjsSaved: Promise<void> = commonjsResult.then((invoice) => commonjs.saveInvoice(invoice, "invoice.pdf"));
 const commonjsError: commonjs.EasyInvoiceError = new commonjs.EasyInvoiceError("Failed");
 `,
   );
@@ -268,14 +280,20 @@ import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "node:fs";
 const pdf = "JVBERi0xLjcK";
 let requests = 0;
-globalThis.fetch = async () => {
+globalThis.fetch = async (url, options) => {
   requests++;
-  return Response.json({ data: { pdf } });
+  if (options?.method === "POST") return Response.json({ data: {
+    pdfUrl: "https://exports.example.com/invoice.pdf?signature=test",
+    expiresAt: "2099-01-01T00:05:00.000Z",
+  } });
+  assert.equal(url, "https://exports.example.com/invoice.pdf?signature=test");
+  assert.equal(options.headers, undefined);
+  return new Response(Buffer.from(pdf, "base64"));
 };
 rmSync("invoice.pdf", { force: true });
 // Promise chains can finish after module evaluation, so check once file I/O has completed.
 process.once("beforeExit", () => {
-  assert.equal(requests, 1);
+  assert.equal(requests, 2);
   assert.equal(readFileSync("invoice.pdf").toString("base64"), pdf);
 });
 await import(process.argv[2]);

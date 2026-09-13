@@ -1,4 +1,3 @@
-import { writeFile } from "fs/promises";
 import easyinvoice from "easyinvoice";
 
 /**
@@ -42,4 +41,4 @@ const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
 const result = await easyinvoice.createInvoice(data);
-await writeFile("invoice.pdf", result.pdf, "base64");
+await easyinvoice.saveInvoice(result, "invoice.pdf");
