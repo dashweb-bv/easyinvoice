@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM"],
-    "types": [],
+    "lib": ["ES2023"],
+    "types": ["node"],
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,
@@ -12,6 +12,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedDeclarations": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": true,

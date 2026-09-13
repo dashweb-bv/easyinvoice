@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import easyinvoice, { type InvoiceData } from "easyinvoice";
+import easyinvoice, { EasyInvoiceError, type InvoiceData } from "easyinvoice";
 
 const data: InvoiceData = {
   mode: "development",
@@ -33,9 +33,15 @@ const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
 try {
-  const result = await easyinvoice.createInvoice(data);
+  const result = await easyinvoice.createInvoice(data, {
+    signal: AbortSignal.timeout(30_000),
+  });
   await writeFile("invoice.pdf", result.pdf, "base64");
-} catch {
-  console.error("Invoice creation failed.");
+} catch (error) {
+  if (error instanceof EasyInvoiceError) {
+    console.error(`Invoice creation failed: ${error.message}`, error.body);
+  } else {
+    console.error("Invoice creation failed.", error);
+  }
   process.exitCode = 1;
 }

@@ -1,7 +1,12 @@
-// Reuse the CommonJS singleton so require() and import share invoice and render state.
-import easyinvoice from "./index.cjs";
+import { createInvoice } from "./easyinvoice.js";
+import { EasyInvoiceError } from "./error.js";
 
-export const EasyInvoice = easyinvoice.EasyInvoice;
-export type EasyInvoice = InstanceType<typeof EasyInvoice>;
+export { createInvoice, EasyInvoiceError };
 export type * from "./types.js";
+
+const easyinvoice: {
+  createInvoice: typeof createInvoice;
+  EasyInvoiceError: typeof EasyInvoiceError;
+} = { createInvoice, EasyInvoiceError };
+
 export default easyinvoice;

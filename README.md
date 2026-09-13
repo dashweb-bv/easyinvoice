@@ -5,17 +5,17 @@
 [![Coverage](https://codecov.io/gh/dashweb-bv/easyinvoice/branch/master/graph/badge.svg)](https://codecov.io/gh/dashweb-bv/easyinvoice)
 [![License](https://img.shields.io/npm/l/easyinvoice.svg)](LICENSE)
 
-Create PDF invoices from JavaScript or TypeScript. Easy Invoice sends invoice data to the hosted API,
+Create PDF invoices from Node.js using JavaScript or TypeScript. Easy Invoice sends invoice data to the hosted API,
 which validates the invoice, calculates totals, and returns a base64 PDF. An internet connection is required.
-Browser helpers can download, print, and render the returned PDF.
+This package is for backend use only and has no runtime dependencies.
 
 See [Budget Invoice](https://www.budgetinvoice.com/) for the product, account access, and current service terms.
 Service pricing and request limits are managed separately from this npm package.
 
 ## Install
 
-Requires **Node.js 22.14 or newer**, or a modern browser with `fetch`. TypeScript declarations are included.
-PDF rendering has additional browser requirements described [below](#render-a-pdf).
+Requires **Node.js 22.14 or newer**. CommonJS, native ES modules with tree-shaking support, and TypeScript
+declarations are included. Importing the package has no side effects.
 
 ```sh
 npm install easyinvoice
@@ -32,7 +32,7 @@ production account key. Keep production API keys on your server, never in browse
 
 ```ts
 import { writeFile } from "node:fs/promises";
-import easyinvoice, { type InvoiceData } from "easyinvoice";
+import easyinvoice, { EasyInvoiceError, type InvoiceData } from "easyinvoice";
 
 const data: InvoiceData = {
   mode: "development",
@@ -66,10 +66,16 @@ const apiKey = process.env.EASYINVOICE_API_KEY;
 if (apiKey) data.apiKey = apiKey;
 
 try {
-  const result = await easyinvoice.createInvoice(data);
+  const result = await easyinvoice.createInvoice(data, {
+    signal: AbortSignal.timeout(30_000),
+  });
   await writeFile("invoice.pdf", result.pdf, "base64");
-} catch {
-  console.error("Invoice creation failed.");
+} catch (error) {
+  if (error instanceof EasyInvoiceError) {
+    console.error(`Invoice creation failed: ${error.message}`, error.body);
+  } else {
+    console.error("Invoice creation failed.", error);
+  }
   process.exitCode = 1;
 }
 ```
@@ -85,74 +91,76 @@ CommonJS is supported too:
 const { writeFileSync } = require("node:fs");
 const easyinvoice = require("easyinvoice");
 
-easyinvoice.createInvoice({
-  mode: "development",
-  products: [{ quantity: 1, description: "Consulting", taxRate: 21, price: 75 }],
-}).then((result) => {
-  writeFileSync("invoice.pdf", result.pdf, "base64");
-}).catch(() => {
-  console.error("Invoice creation failed.");
-  process.exitCode = 1;
-});
+easyinvoice
+  .createInvoice({
+    mode: "development",
+    products: [{ quantity: 1, description: "Consulting", taxRate: 21, price: 75 }],
+  })
+  .then((result) => {
+    writeFileSync("invoice.pdf", result.pdf, "base64");
+  })
+  .catch((error) => {
+    if (error instanceof easyinvoice.EasyInvoiceError) {
+      console.error(`Invoice creation failed: ${error.message}`, error.body);
+    } else {
+      console.error("Invoice creation failed.", error);
+    }
+    process.exitCode = 1;
+  });
 ```
 
 ### API keys and development mode
 
-- Free requests omit `apiKey`. The string `"free"` is not a special client-side value: any nonblank key is sent
+- Free requests omit `apiKey`. Any nonblank key is sent
   as an `Authorization: Bearer …` header and remains in the invoice payload.
-- Obtain account keys through the product's account settings. For browser applications using a paid key,
-  create invoices through your own server and return the PDF to the browser.
+- Obtain account keys through the product's account settings and store them in server-side environment variables.
 - `mode: "development"` adds an `EXAMPLE` watermark. It still uses the hosted service and remains subject to limits.
 - Omit `mode`, or set it to `"production"`, for production invoices.
 
-## API and state
+## API
 
-| Method | Result |
-| --- | --- |
-| `createInvoice(data, callback?)` | `Promise<CreateInvoiceResult>` containing the PDF and calculations |
-| `download(filename?, pdf?)` | Starts a browser download; returns `void` |
-| `print(pdf?)` | `Promise<void>` resolving after Print.js is invoked |
-| `render(elementId, pdf?, callback?)` | Renders page 1; resolves to `true` |
-| `renderPdf(pdf?, callback?)` | Renders page 1 into the last successfully used element; resolves to `true` |
-| `renderPage(pageNumber, callback?)` | Renders a one-based page from the current document; resolves to `true` |
+`createInvoice(data: InvoiceData, options?: CreateInvoiceOptions): Promise<CreateInvoiceResult>` sends invoice
+data to the hosted API and returns its PDF and calculations. Calls are independent; the client keeps no invoice state.
 
-`download`, `print`, and rendering methods require a browser. `download()` defaults to the filename
-`invoice.pdf`. An omitted `pdf` uses the last successfully **created** invoice on that instance;
-rendering a different PDF does not change this default. A failed creation preserves the previous PDF.
-
-The default ES module export and `require("easyinvoice")` share one instance. Create separate instances when
-independent stored PDFs or render targets are needed:
+Use the default export as shown above, or import the function directly:
 
 ```ts
-import { EasyInvoice } from "easyinvoice";
+import { createInvoice } from "easyinvoice";
 
-const invoices = new EasyInvoice();
+const result = await createInvoice(data);
 ```
 
-CommonJS exposes the same constructor as `require("easyinvoice").EasyInvoice`.
-Importing the npm package does not create globals in Node.js.
+### Options
 
-### Errors and callbacks
+| Option   | Purpose                                                                                       |
+| -------- | --------------------------------------------------------------------------------------------- |
+| `signal` | An `AbortSignal` that cancels the request, for example `AbortSignal.timeout(30_000)`          |
+| `fetch`  | A replacement for the global `fetch`, for example to route requests through a proxy or a mock |
 
-Always handle the promise returned by `createInvoice()`, including when passing a callback.
-HTTP error bodies are forwarded as received; network failures and invalid responses also reject.
-Prefer `async`/`await` or `.then()` for typed results.
+No timeout is applied by default; pass `signal` to bound the request.
 
-The legacy callback receives **one argument: either the result or the rejection reason**. It is not an
-error-first callback. Its historical TypeScript success signature remains available for compatibility:
+### Errors
 
-```js
-easyinvoice.createInvoice(data, () => {
-  console.info("Invoice request completed.");
-}).catch(() => {
-  console.error("Invoice creation failed.");
-});
+- Invalid arguments reject with a `TypeError` before any request is made.
+- Failed requests reject with an `EasyInvoiceError`. HTTP failures set `status` and `body` (the API's error body
+  as parsed JSON or plain text), and the message includes the HTTP status and the API's `message` field when present.
+  Network failures leave `status` undefined and expose the underlying error as `cause`.
+- Malformed successful responses also reject with an `EasyInvoiceError`.
+- A request cancelled through `signal` rejects with the abort reason, such as a `TimeoutError`, so the usual abort
+  handling applies.
+
+```ts
+import { createInvoice, EasyInvoiceError } from "easyinvoice";
+
+try {
+  await createInvoice(data);
+} catch (error) {
+  if (error instanceof EasyInvoiceError && error.status === 429) {
+    // Back off and retry later.
+  }
+  throw error;
+}
 ```
-
-Render callbacks receive `true` after a successful render. Missing elements, invalid PDFs, invalid page
-numbers, and PDF.js errors reject rendering promises. `download()` throws on invalid input; `print()` can
-throw synchronously on invalid input and can also reject. Wrap awaited calls in `try`/`catch` to handle both.
-Printing resolves before the user finishes the print dialog.
 
 ## Invoice data
 
@@ -160,18 +168,21 @@ The package forwards invoice fields to the API without calculating totals or con
 Use `InvoiceData` for the request and `CreateInvoiceResult` for the response. Product quantities accept
 numbers or strings; the server determines which values are valid.
 
-| Field | Purpose |
-| --- | --- |
-| `apiKey` | Optional account key; also used as the Bearer token |
-| `mode` | `"development"` or `"production"` |
-| `sender`, `client` | `company`, `address`, `zip`, `city`, `country`, and `custom1`–`custom3` |
-| `information` | Display strings for `number`, `date`, and `dueDate` |
-| `products` | Line items with `quantity`, `description`, `taxRate`, and `price` |
-| `bottomNotice` | Text printed at the bottom of the invoice |
-| `settings` | Currency, number formatting, and page layout |
-| `translate` | Replacement labels for the invoice template |
-| `images` | Base64-encoded `logo` and `background` files |
-| `customize.template` | Base64-encoded HTML template |
+| Field                | Purpose                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| `apiKey`             | Optional account key; also used as the Bearer token                         |
+| `mode`               | `"development"` or `"production"`                                           |
+| `sender`, `client`   | `company`, `address`, `zip`, `city`, `country`, and `custom1`–`custom3`     |
+| `information`        | Display strings for `number`, `date`, and `dueDate`                         |
+| `products`           | Line items with `quantity`, `description`, `taxRate`, and `price`           |
+| `bottomNotice`       | Text printed at the bottom of the invoice                                   |
+| `settings`           | Currency, number formatting, and page layout                                |
+| `translate`          | Replacement labels for the invoice template                                 |
+| `images`             | Base64-encoded `logo` and `background` files                                |
+| `customize.template` | Base64-encoded HTML template                                                |
+
+The declared types are strict, so TypeScript reports misspelled fields. Fields that are not typed yet are still
+forwarded to the API at runtime; extend `InvoiceData` to pass them from TypeScript.
 
 ### Currency, language, and layout
 
@@ -241,108 +252,15 @@ const logo = Buffer.from(await response.arrayBuffer()).toString("base64");
 
 ### Returned values
 
-| Field | Value |
-| --- | --- |
-| `result.pdf` | Base64-encoded PDF |
-| `result.calculations.products` | Per-product `subtotal`, `tax`, and `total` |
-| `result.calculations.tax` | Object mapping each tax rate to its total tax amount |
-| `result.calculations.subtotal` | Combined amount excluding tax |
-| `result.calculations.total` | Combined amount including tax |
+| Field                            | Value                                              |
+| -------------------------------- | -------------------------------------------------- |
+| `result.pdf`                     | Base64-encoded PDF                                 |
+| `result.calculations.products`   | Per-product `subtotal`, `tax`, and `total`         |
+| `result.calculations.tax`        | Object mapping each tax rate to its total tax amount |
+| `result.calculations.subtotal`   | Combined amount excluding tax                      |
+| `result.calculations.total`      | Combined amount including tax                      |
 
 Amounts are calculated and rounded by the server. Additional response fields are preserved.
-
-## Browser usage
-
-Use a bundler with the npm package, or load one of the CDN scripts below. The CDN script exposes
-`globalThis.easyinvoice` and includes printing support. Pin the Easy Invoice version in production.
-
-```html
-<script src="https://unpkg.com/easyinvoice/dist/easyinvoice.min.js"></script>
-<!-- Alternatively: https://cdn.jsdelivr.net/npm/easyinvoice/dist/easyinvoice.min.js -->
-```
-
-Create an invoice without embedding an account key, or obtain its base64 PDF from your own server:
-
-```js
-const result = await easyinvoice.createInvoice({
-  mode: "development",
-  products: [{ quantity: 1, description: "Consulting", taxRate: 21, price: 75 }],
-});
-
-easyinvoice.download("invoice.pdf", result.pdf);
-await easyinvoice.print(result.pdf);
-```
-
-Use `download()` or `print()` without arguments to use the last successfully created PDF.
-Handle creation and printing failures with `try`/`catch`, as in the server example.
-
-### Render a PDF
-
-Rendering uses the optional `pdfjs-dist` peer dependency. PDF.js 6 is supported; the integration is tested
-with 6.3.289. You do not need PDF.js for invoice creation, downloading, or printing.
-
-```sh
-npm install pdfjs-dist@^6.3.289
-```
-
-Configure a matching worker before the first render. For the default build, copy
-`node_modules/pdfjs-dist/build/pdf.worker.mjs` to your application's public assets:
-
-```ts
-import { GlobalWorkerOptions } from "pdfjs-dist";
-
-GlobalWorkerOptions.workerSrc = "/pdf.worker.mjs";
-```
-
-The default build targets current browsers. For broader browser support, use the `legacy` build and copy
-`node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs` instead. Pass that library instance to Easy Invoice:
-
-```ts
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.mjs";
-Object.assign(globalThis, { pdfjsLib });
-```
-
-The library and worker must use the same version and build. Update cached worker files when upgrading.
-Easy Invoice lazily imports the default PDF.js build unless `globalThis.pdfjsLib` is provided.
-
-For CDN usage, configure both modules before rendering:
-
-```html
-<div id="pdf"></div>
-<script type="module">
-  import * as pdfjsLib from "https://unpkg.com/pdfjs-dist@6.3.289/legacy/build/pdf.mjs";
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://unpkg.com/pdfjs-dist@6.3.289/legacy/build/pdf.worker.mjs";
-  Object.assign(globalThis, { pdfjsLib });
-
-  // Obtain a base64 PDF, then call easyinvoice.render("pdf", pdf).
-</script>
-```
-
-Hosting the worker on your own origin is recommended. See the [PDF.js worker example](https://github.com/mozilla/pdf.js/blob/master/examples/learning/helloworld.html)
-and [browser support table](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsersenvironments-are-supported).
-Internet Explorer is not supported.
-
-```ts
-await easyinvoice.render("pdf", result.pdf);
-// After rendering a document with at least two pages:
-await easyinvoice.renderPage(2);
-// Replace it in the same element:
-await easyinvoice.renderPdf(otherPdf);
-```
-
-Optional styling keeps the rendered canvas within its container:
-
-```css
-#pdf canvas {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin-inline: auto;
-}
-```
 
 ## Custom templates
 
@@ -407,7 +325,7 @@ The HTTP response wraps the invoice in `data`; `createInvoice()` returns that in
 ## Concurrent creation
 
 Use `Promise.all` for a small batch, and handle rejection as with a single invoice. All requests count
-against the service's applicable limits. Pass each returned PDF explicitly when using browser helpers:
+against the service's applicable limits.
 
 ```ts
 const invoices = await Promise.all([
@@ -419,8 +337,23 @@ const invoices = await Promise.all([
 ## Development and compatibility
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pnpm setup, checks, and automated releases.
-Report package bugs in [GitHub issues](https://github.com/dashweb-bv/easyinvoice/issues).
+Report package bugs in [GitHub issues](https://github.com/dashweb-bv/easyinvoice/issues) and security issues
+as described in [SECURITY.md](SECURITY.md).
 
-The TypeScript rewrite preserves the hosted endpoint, invoice payloads, server results, callback conventions,
-and the `dist/easyinvoice.min.js` CDN path. It provides CommonJS and ES module entry points, optional PDF.js,
-and errors for failed rendering instead of pending promises. Node.js versions below 22.14 are unsupported.
+### Migration from version 3
+
+Easy Invoice originally supported both backend and frontend use. We removed frontend support because
+authenticated API access uses secret API keys, which cannot be kept private in browser code.
+
+This is a breaking change. Invoice generation is supported only on the backend; browser/CDN entry points,
+PDF rendering, printing, and download helpers have been removed.
+
+- Replace `new EasyInvoice().createInvoice(data)` with `createInvoice(data)` or `easyinvoice.createInvoice(data)`.
+- Replace `createInvoice(data, callback)` with `await createInvoice(data)` or `.then()`/`.catch()`.
+- Remove calls to `download`, `print`, `render`, `renderPdf`, and `renderPage`.
+- Failed requests now reject with an `EasyInvoiceError` instead of the raw API response body.
+  Read the body from `error.body` and the HTTP status from `error.status`.
+- Invoice types no longer accept arbitrary extra fields. Extend `InvoiceData` for fields that are not typed yet.
+- Node.js 22.14 or newer is required.
+
+The hosted endpoint, invoice payloads, API key behavior, and returned results are unchanged.

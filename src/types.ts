@@ -1,11 +1,14 @@
-/** Sender or recipient details, including custom fields supported by the API. */
+/** Sender or recipient details. */
 export interface InvoiceSenderOrClient {
   company?: string;
   address?: string;
   zip?: string;
   city?: string;
   country?: string;
-  [key: string]: string | undefined;
+  /** Free-form lines printed below the address. */
+  custom1?: string;
+  custom2?: string;
+  custom3?: string;
 }
 
 /** A line item whose totals are calculated by the hosted API. */
@@ -15,7 +18,6 @@ export interface InvoiceProduct {
   description?: string;
   taxRate?: number;
   price?: number;
-  [key: string]: unknown;
 }
 
 /** Formatting and page layout options interpreted by the hosted API. */
@@ -32,7 +34,6 @@ export interface InvoiceSettings {
   height?: `${number}${"px" | "mm" | "cm" | "in"}`;
   width?: `${number}${"px" | "mm" | "cm" | "in"}`;
   orientation?: "portrait" | "landscape";
-  [key: string]: unknown;
 }
 
 /** Invoice artwork supplied as base64-encoded files. */
@@ -41,7 +42,6 @@ export interface InvoiceImages {
   logo?: string;
   /** An image or PDF used as the invoice background. */
   background?: string;
-  [key: string]: unknown;
 }
 
 /** Replacement text for labels in the invoice template. */
@@ -51,14 +51,15 @@ export interface InvoiceTranslations {
   date?: string;
   dueDate?: string;
   subtotal?: string;
+  rounding?: string;
   products?: string;
   quantity?: string;
   price?: string;
   productTotal?: string;
   total?: string;
+  /** Legacy label; the current template reads `taxNotation`. */
   vat?: string;
   taxNotation?: string;
-  [key: string]: string | undefined;
 }
 
 /** Invoice identifiers and display dates; this package does not parse dates. */
@@ -66,15 +67,21 @@ export interface InvoiceInformation {
   number?: string;
   date?: string;
   dueDate?: string;
-  [key: string]: unknown;
+}
+
+/** Custom template options interpreted by the hosted API. */
+export interface InvoiceCustomizations {
+  /** Base64-encoded HTML containing invoice template placeholders. */
+  template?: string;
 }
 
 /**
  * Invoice payload sent to the hosted API, which validates fields and calculates totals.
- * Additional fields are accepted throughout the payload and forwarded to the API.
+ * Fields outside this interface are forwarded unchanged at runtime; extend the interface
+ * to pass options that are not typed yet.
  */
 export interface InvoiceData {
-  /** Also sent as the request's Bearer token when nonblank. */
+  /** Server-side account key. Also sent as the Bearer token when nonblank. */
   apiKey?: string;
   mode?: "production" | "development";
   information?: InvoiceInformation;
@@ -86,14 +93,21 @@ export interface InvoiceData {
   products?: InvoiceProduct[];
   bottomNotice?: string;
   customize?: InvoiceCustomizations;
-  [key: string]: unknown;
 }
 
-/** Custom template options interpreted by the hosted API. */
-export interface InvoiceCustomizations {
-  /** Base64-encoded HTML containing invoice template placeholders. */
-  template?: string;
-  [key: string]: unknown;
+/** Per-request options; none of them are sent to the API. */
+export interface CreateInvoiceOptions {
+  /** Cancels the request, for example `AbortSignal.timeout(30_000)`. */
+  signal?: AbortSignal;
+  /** Replaces the global `fetch`, for proxies or tests. */
+  fetch?: typeof globalThis.fetch;
+}
+
+/** Constructor options for `EasyInvoiceError`. */
+export interface EasyInvoiceErrorOptions {
+  status?: number;
+  body?: unknown;
+  cause?: unknown;
 }
 
 /** Rounded amounts returned by the API; this package does not recalculate them. */
@@ -116,9 +130,7 @@ export interface ProductCalculations {
 }
 
 /** Total tax grouped by tax rate, for example `{ 21: 42 }`. */
-export interface TaxCalculations {
-  [key: number]: number;
-}
+export type TaxCalculations = Record<number, number>;
 
 /** Successful API response, including any additional fields returned by the server. */
 export interface CreateInvoiceResult {
@@ -127,13 +139,3 @@ export interface CreateInvoiceResult {
   calculations: InvoiceCalculations;
   [key: string]: unknown;
 }
-
-/**
- * Legacy success signature retained for compatibility. At runtime, the single
- * argument can also be a rejection reason; this is not an error-first callback.
- * Use the returned promise for typed results and always handle its rejection.
- */
-export type InvoiceCallback = (result: CreateInvoiceResult) => void;
-
-/** Called with `true` after a page renders successfully. */
-export type RenderCallback = (finished: true) => void;

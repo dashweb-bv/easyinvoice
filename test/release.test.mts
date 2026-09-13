@@ -14,28 +14,55 @@ import { Writable } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const config: {
-  branches: string[];
-  plugins: (string | [string, Record<string, unknown>])[];
-} = JSON.parse(
+type PluginConfig = Record<string, unknown>;
+type PluginContext = Record<string, unknown>;
+type ReleaseResult =
+  | false
+  | {
+      lastRelease: { version: string };
+      nextRelease: { version: string; type: string };
+    };
+
+const config = JSON.parse(
   readFileSync(new URL("../.releaserc.json", import.meta.url), "utf8"),
-);
+) as {
+  branches: string[];
+  plugins: (string | [string, PluginConfig])[];
+};
 const analyzer = config.plugins.find(
   (plugin) =>
     Array.isArray(plugin) && plugin[0] === "@semantic-release/commit-analyzer",
 );
 assert.ok(Array.isArray(analyzer));
 // These plugins do not publish TypeScript declarations.
-const { analyzeCommits } = await import(import.meta.resolve(analyzer[0]));
-const { prepare } = await import(import.meta.resolve("@semantic-release/npm"));
-const logger = { log() {} };
+const { analyzeCommits } = (await import(import.meta.resolve(analyzer[0]))) as {
+  analyzeCommits: (
+    config: PluginConfig,
+    context: PluginContext,
+  ) => Promise<string | null>;
+};
+const { prepare } = (await import(
+  import.meta.resolve("@semantic-release/npm")
+)) as {
+  prepare: (config: PluginConfig, context: PluginContext) => Promise<void>;
+};
+const logger = { log: () => undefined };
 
-test("release rules recognize maintenance, features, and breaking changes", async () => {
+test("release rules publish fixes and features and skip maintenance commits", async () => {
   for (const [message, expected] of [
     ["fix: preserve invoice errors", "patch"],
-    ["docs: update the README", "patch"],
+    ["perf: reuse the request headers", "patch"],
+    ["refactor: simplify response parsing", "patch"],
+    ["revert: restore the previous parser", "patch"],
+    ["docs(readme): document the error class", "patch"],
+    ["docs: update CONTRIBUTING", null],
+    ["chore: update tooling", null],
+    ["ci: pin the actions", null],
+    ["test: cover aborted requests", null],
+    ["build(deps-dev): bump typescript from 6.0.2 to 6.0.3", null],
     ["feat: add an invoice option", "minor"],
     ["feat!: remove a legacy option", "major"],
+    ["refactor!: drop browser support", "major"],
     ["fix: update the API\n\nBREAKING CHANGE: remove a legacy option", "major"],
     ["Merge pull request #1 from example/branch", null],
   ] as const) {
@@ -51,9 +78,11 @@ test("release rules recognize maintenance, features, and breaking changes", asyn
   }
 });
 
-test("a release continues from the existing npm version without publishing", async (t) => {
+test("a release continues from the last tag and publishes a major for breaking changes", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "easyinvoice-release-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  t.after(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
   const remote = join(directory, "remote.git");
   const repository = join(directory, "repository");
   // Keep this test independent of CI credentials and developer Git hooks.
@@ -90,7 +119,7 @@ test("a release continues from the existing npm version without publishing", asy
     repositoryUrl: pathToFileURL(remote).href,
     dryRun: true,
     ci: false,
-    // Only analysis runs: no npm, GitHub, or release-commit plugins.
+    // Only analysis runs: no npm or GitHub plugins.
     plugins: config.plugins
       .filter(
         (plugin) =>
@@ -120,75 +149,47 @@ const result = await release(${JSON.stringify(options)}, { cwd: ${JSON.stringify
 writeFileSync(${JSON.stringify(resultFile)}, JSON.stringify(result));
 `,
   );
-  const runRelease = () => {
+  const runRelease = (): ReleaseResult => {
     execFileSync(process.execPath, [script], {
       cwd: repository,
       env,
       stdio: "pipe",
     });
-    return JSON.parse(readFileSync(resultFile, "utf8"));
+    return JSON.parse(readFileSync(resultFile, "utf8")) as ReleaseResult;
   };
+  const commit = (message: string) => {
+    git("-C", repository, "commit", "--allow-empty", "-m", message);
+    git("-C", repository, "push", "origin", "master");
+  };
+
   assert.equal(runRelease(), false);
 
-  git(
-    "-C",
-    repository,
-    "commit",
-    "--allow-empty",
-    "-m",
-    "fix: preserve invoice errors",
-  );
-  git("-C", repository, "push", "origin", "master");
-  const result = runRelease();
-  assert.ok(result);
-  assert.equal(result.lastRelease.version, "3.0.47");
-  assert.equal(result.nextRelease.version, "3.0.48");
-  assert.equal(git("-C", remote, "tag", "--list").trim(), "v3.0.47");
+  commit("chore: update tooling");
+  assert.equal(runRelease(), false);
 
-  const gitPlugin = config.plugins.find(
-    (plugin) => Array.isArray(plugin) && plugin[0] === "@semantic-release/git",
-  );
-  assert.ok(Array.isArray(gitPlugin));
-  const { prepare: prepareGit } = await import(
-    import.meta.resolve(gitPlugin[0])
-  );
-  writeFileSync(
-    join(repository, "package.json"),
-    JSON.stringify({ name: "easyinvoice-release-test", version: "3.0.48" }),
-  );
-  writeFileSync(
-    join(repository, "unrelated.txt"),
-    "Leave unrelated files out of the release.",
-  );
-  await prepareGit(gitPlugin[1], {
-    cwd: repository,
-    env,
-    branch: { name: "master" },
-    options: { repositoryUrl: options.repositoryUrl },
-    lastRelease: result.lastRelease,
-    nextRelease: result.nextRelease,
-    logger,
-  });
-  assert.equal(
-    git("-C", remote, "log", "-1", "--format=%s").trim(),
-    "chore(release): 3.0.48 [skip ci]",
-  );
-  assert.equal(
-    git("-C", remote, "show", "--format=", "--name-only", "master").trim(),
-    "package.json",
-  );
-  assert.equal(
-    JSON.parse(git("-C", remote, "show", "master:package.json")).version,
-    "3.0.48",
-  );
+  commit("fix: preserve invoice errors");
+  const patch = runRelease();
+  assert.ok(patch);
+  assert.equal(patch.lastRelease.version, "3.0.47");
+  assert.equal(patch.nextRelease.version, "3.0.48");
+
+  commit("refactor!: drop browser support");
+  const major = runRelease();
+  assert.ok(major);
+  assert.equal(major.lastRelease.version, "3.0.47");
+  assert.equal(major.nextRelease.type, "major");
+  assert.equal(major.nextRelease.version, "4.0.0");
+  assert.equal(git("-C", remote, "tag", "--list").trim(), "v3.0.47");
 });
 
 test("release preparation updates the version and preserves the pnpm lockfile", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "easyinvoice-version-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  t.after(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
   const manifest = {
     name: "easyinvoice-release-test",
-    version: "3.0.47",
+    version: "0.0.0-development",
     private: true,
   };
   writeFileSync(join(directory, "package.json"), JSON.stringify(manifest));
@@ -211,7 +212,7 @@ test("release preparation updates the version and preserves the pnpm lockfile", 
         NPM_CONFIG_USERCONFIG: join(directory, ".npmrc"),
         NPM_CONFIG_CACHE: join(directory, "npm-cache"),
       },
-      nextRelease: { version: "3.0.48" },
+      nextRelease: { version: "4.0.0" },
       logger,
       stdout: output,
       stderr: output,
@@ -219,8 +220,8 @@ test("release preparation updates the version and preserves the pnpm lockfile", 
   );
   const published = JSON.parse(
     readFileSync(join(directory, "package.json"), "utf8"),
-  );
-  assert.equal(published.version, "3.0.48");
+  ) as { version: string };
+  assert.equal(published.version, "4.0.0");
   assert.equal(
     readFileSync(join(directory, "pnpm-lock.yaml"), "utf8"),
     lockfile,

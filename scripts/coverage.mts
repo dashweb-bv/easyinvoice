@@ -13,7 +13,7 @@ execFileSync(
     "--enable-source-maps",
     "--test",
     "--experimental-test-coverage",
-    "--test-coverage-include={dist,src}/{easyinvoice,mobile,pdf}.{js,ts}",
+    "--test-coverage-include={dist,src}/{easyinvoice,error}.{js,ts}",
     "--test-coverage-lines=90",
     "--test-coverage-branches=90",
     "--test-coverage-functions=90",
@@ -32,7 +32,7 @@ execFileSync(
 const report = readFileSync(join(root, "coverage/lcov.info"), "utf8");
 assert.match(
   report,
-  /^SF:src\//m,
+  /^SF:src[\\/]/m,
   "Coverage must map to TypeScript source files.",
 );
 assert.match(

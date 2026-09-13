@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   HUSKY: 0
@@ -20,19 +20,19 @@ jobs:
   check:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Set up the minimum supported Node.js version
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.14.0
       - name: Remember the minimum Node.js executable
         run: node -p '"MINIMUM_NODE=" + process.execPath' >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - uses: pnpm/setup@v2
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with:
           cache: true
           install: false
@@ -55,13 +55,9 @@ jobs:
       - run: pnpm run check
       - name: Check the package on the minimum supported Node.js version
         run: pnpm run test:package "$MINIMUM_NODE"
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps --only-shell chromium
-      - name: Check PDF rendering in Chromium
-        run: pnpm run test:browser
       - name: Upload coverage to Codecov
         if: github.event_name == 'push'
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: coverage/lcov.info
           disable_search: true
@@ -74,27 +70,21 @@ jobs:
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
+      # Lets npm trusted publishing authenticate this workflow through OIDC; no npm token is needed.
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - uses: pnpm/setup@v2
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with:
           cache: true
           install: false
       - run: pnpm install --frozen-lockfile
-      - name: Initialize the existing release history
-        # npm records this commit as the published 3.0.47 release; the old workflow created no tags.
-        run: |
-          if ! git show-ref --verify --quiet refs/tags/v3.0.47; then
-            git tag v3.0.47 f027ba710a08f2288eaa8f76bb60b060a45e9ac3
-            git push origin refs/tags/v3.0.47
-          fi
       - name: Version and publish
         run: pnpm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.npm_token }}

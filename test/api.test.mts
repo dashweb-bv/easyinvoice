@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import easyinvoice from "../dist/index.cjs";
+import { createInvoice, EasyInvoiceError } from "../dist/index.mjs";
 
-const { EasyInvoice } = easyinvoice;
+const endpoint = "https://api.easyinvoice.cloud/v2/free/invoices";
 const result = {
   pdf: "JVBERi0xLjcK",
   calculations: {
@@ -14,6 +15,11 @@ const result = {
   requestId: "preserve-server-fields",
 };
 
+test("both entry points expose the same function and error class", () => {
+  assert.equal(easyinvoice.createInvoice, createInvoice);
+  assert.equal(easyinvoice.EasyInvoiceError, EasyInvoiceError);
+});
+
 test("createInvoice preserves the request and returns the full API result", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
@@ -22,9 +28,11 @@ test("createInvoice preserves the request and returns the full API result", asyn
     mode: "development" as const,
     products: [
       { quantity: 1.5, description: "Service", taxRate: 20, price: 10 },
+      { quantity: "2", description: "Product", taxRate: 20, price: 5 },
     ],
     sender: { company: "Example", custom1: "Custom value" },
     customize: { template: "PGgxPkludm9pY2U8L2gxPg==" },
+    // Fields that are not typed yet are forwarded unchanged.
     customOption: { passThrough: true },
   };
   const original = structuredClone(data);
@@ -33,13 +41,14 @@ test("createInvoice preserves the request and returns the full API result", asyn
   assert.deepEqual(data, original);
   assert.equal(request.mock.callCount(), 1);
   const [url, init] = request.mock.calls[0]!.arguments;
-  assert.equal(url, "https://api.easyinvoice.cloud/v2/free/invoices");
+  assert.equal(url, endpoint);
   assert.equal(init!.method, "POST");
   assert.deepEqual(JSON.parse(init!.body as string), { data });
   const headers = new Headers(init!.headers);
   assert.equal(headers.get("content-type"), "application/json");
   assert.equal(headers.get("easyinvoice-source"), "npm");
   assert.equal(headers.has("authorization"), false);
+  assert.equal(init!.signal, undefined);
 });
 
 test("createInvoice sends a nonblank API key without modifying its value", async (t) => {
@@ -48,16 +57,13 @@ test("createInvoice sends a nonblank API key without modifying its value", async
   );
   const apiKey = "  paid-api-key  ";
 
-  await new EasyInvoice().createInvoice({ apiKey });
+  await createInvoice({ apiKey });
 
   const init = request.mock.calls[0]!.arguments[1]!;
-  const headers = Object.fromEntries(
-    Object.entries(init.headers!).map(([name, value]) => [
-      name.toLowerCase(),
-      value,
-    ]),
+  assert.equal(
+    (init.headers as Record<string, string>).Authorization,
+    `Bearer ${apiKey}`,
   );
-  assert.equal(headers.authorization, `Bearer ${apiKey}`);
   assert.deepEqual(JSON.parse(init.body as string), { data: { apiKey } });
 });
 
@@ -67,7 +73,7 @@ test("createInvoice omits authorization for missing and blank API keys", async (
   );
 
   for (const data of [{}, { apiKey: "" }, { apiKey: " \t " }]) {
-    await new EasyInvoice().createInvoice(data);
+    await createInvoice(data);
   }
 
   assert.equal(request.mock.callCount(), 3);
@@ -79,30 +85,7 @@ test("createInvoice omits authorization for missing and blank API keys", async (
   }
 });
 
-test("createInvoice calls its success callback once before promise continuations", async (t) => {
-  t.mock.method(globalThis, "fetch", async () =>
-    Response.json({ data: result }),
-  );
-  const order: string[] = [];
-  const callback = t.mock.fn((value: unknown) => {
-    order.push("callback");
-    assert.deepEqual(value, result);
-  });
-
-  const invoice = await new EasyInvoice()
-    .createInvoice({}, callback)
-    .then((value) => {
-      order.push("promise");
-      return value;
-    });
-
-  assert.deepEqual(order, ["callback", "promise"]);
-  assert.equal(callback.mock.callCount(), 1);
-  assert.deepEqual(callback.mock.calls[0]!.arguments, [invoice]);
-  assert.equal(callback.mock.calls[0]!.arguments[0], invoice);
-});
-
-test("createInvoice rejects with the API error body and calls its callback once", async (t) => {
+test("createInvoice rejects HTTP failures with the status and API body", async (t) => {
   const failure = {
     statusCode: 429,
     message: "ThrottlerException: Too Many Requests",
@@ -111,101 +94,110 @@ test("createInvoice rejects with the API error body and calls its callback once"
   t.mock.method(globalThis, "fetch", async () =>
     Response.json(failure, { status: 429 }),
   );
-  const callback = t.mock.fn((value: unknown) => value);
 
-  await assert.rejects(
-    new EasyInvoice().createInvoice({}, callback),
-    (error) => {
-      assert.deepEqual(error, failure);
-      assert.equal(callback.mock.callCount(), 1);
-      assert.deepEqual(callback.mock.calls[0]!.arguments, [error]);
-      assert.equal(callback.mock.calls[0]!.arguments[0], error);
-      return true;
-    },
-  );
+  await assert.rejects(createInvoice({}), (error) => {
+    assert.ok(error instanceof EasyInvoiceError);
+    assert.equal(error.name, "EasyInvoiceError");
+    assert.equal(
+      error.message,
+      "Invoice API request failed with HTTP 429: ThrottlerException: Too Many Requests.",
+    );
+    assert.equal(error.status, 429);
+    assert.deepEqual(error.body, failure);
+    assert.equal("cause" in error, false);
+    return true;
+  });
 });
 
-test("createInvoice settles network failures and calls its callback once", async (t) => {
+test("createInvoice preserves a non-JSON HTTP error body as text", async (t) => {
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response("upstream unavailable", { status: 502 }),
+  );
+
+  await assert.rejects(createInvoice({}), (error) => {
+    assert.ok(error instanceof EasyInvoiceError);
+    assert.equal(error.message, "Invoice API request failed with HTTP 502.");
+    assert.equal(error.status, 502);
+    assert.equal(error.body, "upstream unavailable");
+    return true;
+  });
+});
+
+test("createInvoice wraps network failures and keeps the cause", async (t) => {
   const failure = new TypeError("fetch failed");
   t.mock.method(globalThis, "fetch", async () => {
     throw failure;
   });
-  const callback = t.mock.fn((value: unknown) => value);
 
-  await assert.rejects(
-    new EasyInvoice().createInvoice({}, callback),
-    (error) => error === failure,
-  );
-  assert.equal(callback.mock.callCount(), 1);
-  assert.deepEqual(callback.mock.calls[0]!.arguments, [failure]);
+  await assert.rejects(createInvoice({}), (error) => {
+    assert.ok(error instanceof EasyInvoiceError);
+    assert.equal(error.message, "Invoice API request failed.");
+    assert.equal(error.status, undefined);
+    assert.equal(error.body, undefined);
+    assert.equal(error.cause, failure);
+    return true;
+  });
 });
 
-test("createInvoice preserves a non-JSON HTTP error body", async (t) => {
-  const failure = "upstream unavailable";
-  t.mock.method(
-    globalThis,
-    "fetch",
-    async () => new Response(failure, { status: 502 }),
-  );
-  const callback = t.mock.fn((value: unknown) => value);
-
-  await assert.rejects(
-    new EasyInvoice().createInvoice({}, callback),
-    (error) => error === failure,
-  );
-  assert.equal(callback.mock.callCount(), 1);
-  assert.deepEqual(callback.mock.calls[0]!.arguments, [failure]);
-});
-
-for (const [name, body, status] of [
-  ["invalid JSON", "not JSON", 200],
-  ["null response", "null", 200],
-  ["missing data", "{}", 200],
-  ["null data", '{"data":null}', 200],
-  ["missing PDF", '{"data":{"calculations":{}}}', 200],
-  ["non-string PDF", '{"data":{"pdf":123}}', 200],
+for (const [name, body, message] of [
+  ["invalid JSON", "not JSON", "expected JSON"],
+  ["null response", "null", "missing PDF"],
+  ["missing data", "{}", "missing PDF"],
+  ["null data", '{"data":null}', "missing PDF"],
+  ["non-object data", '{"data":42}', "missing PDF"],
+  ["missing PDF", '{"data":{"calculations":{}}}', "missing PDF"],
+  ["non-string PDF", '{"data":{"pdf":123}}', "missing PDF"],
+  ["empty PDF", '{"data":{"pdf":""}}', "missing PDF"],
 ] as const) {
   test(`createInvoice rejects ${name}`, async (t) => {
-    t.mock.method(
-      globalThis,
-      "fetch",
-      async () => new Response(body, { status }),
-    );
-    const callback = t.mock.fn((value: unknown) => value);
+    t.mock.method(globalThis, "fetch", async () => new Response(body));
+    let expectedBody: unknown = body;
+    try {
+      expectedBody = JSON.parse(body);
+    } catch {
+      // The raw text is preserved when the body is not JSON.
+    }
 
-    await assert.rejects(new EasyInvoice().createInvoice({}, callback), Error);
-    assert.equal(callback.mock.callCount(), 1);
-    assert.ok(callback.mock.calls[0]!.arguments[0] instanceof Error);
+    await assert.rejects(createInvoice({}), (error) => {
+      assert.ok(error instanceof EasyInvoiceError);
+      assert.match(error.message, new RegExp(message));
+      assert.equal(error.status, 200);
+      assert.deepEqual(error.body, expectedBody);
+      return true;
+    });
   });
 }
+
+test("createInvoice rejects invalid invoice data before making a request", async (t) => {
+  const request = t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ data: result }),
+  );
+  for (const data of [undefined, null, [], "invoice", 42, true]) {
+    await assert.rejects(createInvoice(data as never), TypeError);
+  }
+  for (const apiKey of [null, 123, false, [], {}]) {
+    await assert.rejects(createInvoice({ apiKey } as never), TypeError);
+  }
+  assert.equal(request.mock.callCount(), 0);
+});
 
 test("createInvoice rejects invalid options before making a request", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
   );
-
-  for (const data of [undefined, null, [], "invoice", 42, true]) {
-    await assert.rejects(
-      new EasyInvoice().createInvoice(data as never),
-      TypeError,
-    );
+  for (const options of [
+    null,
+    "options",
+    [],
+    { signal: "nope" },
+    { signal: {} },
+    { fetch: 42 },
+    { fetch: {} },
+  ]) {
+    await assert.rejects(createInvoice({}, options as never), TypeError);
   }
-
-  assert.equal(request.mock.callCount(), 0);
-});
-
-test("createInvoice rejects invalid API key types before making a request", async (t) => {
-  const request = t.mock.method(globalThis, "fetch", async () =>
-    Response.json({ data: result }),
-  );
-
-  for (const apiKey of [null, 123, false, [], {}]) {
-    await assert.rejects(
-      new EasyInvoice().createInvoice({ apiKey } as never),
-      TypeError,
-    );
-  }
-
   assert.equal(request.mock.callCount(), 0);
 });
 
@@ -213,68 +205,100 @@ test("createInvoice rejects invalid headers without exposing the API key", async
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
   );
-
   for (const apiKey of [
     "synthetic-token\ninjected",
     "synthetic-token-\u{1f512}",
   ]) {
-    const callback = t.mock.fn((value: unknown) => value);
-    await assert.rejects(
-      new EasyInvoice().createInvoice({ apiKey }, callback),
-      (error) => {
-        assert.ok(error instanceof TypeError);
-        assert.equal(
-          error.message,
-          "apiKey must be a valid HTTP header value.",
-        );
-        assert.equal(error.message.includes("synthetic-token"), false);
-        assert.equal("cause" in error, false);
-        assert.equal(callback.mock.callCount(), 1);
-        assert.equal(callback.mock.calls[0]!.arguments[0], error);
-        return true;
-      },
-    );
+    await assert.rejects(createInvoice({ apiKey }), (error) => {
+      assert.ok(error instanceof TypeError);
+      assert.equal(error.message, "apiKey must be a valid HTTP header value.");
+      assert.equal(error.message.includes("synthetic-token"), false);
+      assert.equal("cause" in error, false);
+      return true;
+    });
   }
-
   assert.equal(request.mock.callCount(), 0);
 });
 
-test("request setup errors call the legacy callback before returning the promise", async (t) => {
+test("createInvoice rejects unserializable data without making a request", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () =>
     Response.json({ data: result }),
   );
-  const circular: Record<string, unknown> = {};
+  const circular = { self: {} };
   circular.self = circular;
-
-  for (const data of [null, { apiKey: 123 }, circular]) {
-    const callback = t.mock.fn((_error: unknown) => {});
-    const promise = new EasyInvoice().createInvoice(data as never, callback);
-
-    assert.equal(callback.mock.callCount(), 1);
-    const error = callback.mock.calls[0]!.arguments[0];
-    assert.ok(error instanceof TypeError);
-    await assert.rejects(promise, (rejection) => rejection === error);
-  }
+  await assert.rejects(createInvoice(circular as never), TypeError);
   assert.equal(request.mock.callCount(), 0);
 });
 
-for (const status of [200, 429]) {
-  test(`createInvoice propagates callback exceptions once after HTTP ${status}`, async (t) => {
-    t.mock.method(globalThis, "fetch", async () =>
-      Response.json(
-        status === 200 ? { data: result } : { statusCode: status },
-        { status },
-      ),
-    );
-    const failure = new Error("Callback failed");
-    const callback = t.mock.fn(() => {
-      throw failure;
-    });
+test("createInvoice forwards the signal and rejects with the abort reason", async (t) => {
+  const controller = new AbortController();
+  const reason = new Error("cancelled");
+  const request = t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      assert.equal(init?.signal, controller.signal);
+      controller.signal.throwIfAborted();
+      return Response.json({ data: result });
+    },
+  );
 
-    await assert.rejects(
-      new EasyInvoice().createInvoice({}, callback),
-      (error) => error === failure,
-    );
-    assert.equal(callback.mock.callCount(), 1);
+  assert.deepEqual(
+    await createInvoice({}, { signal: controller.signal }),
+    result,
+  );
+  controller.abort(reason);
+  await assert.rejects(
+    createInvoice({}, { signal: controller.signal }),
+    (error) => error === reason,
+  );
+  assert.equal(request.mock.callCount(), 2);
+});
+
+test("createInvoice uses an injected fetch instead of the global one", async (t) => {
+  const global = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("The global fetch must not be used.");
   });
-}
+  const custom = t.mock.fn(
+    async (_url: string | URL | Request, _init?: RequestInit) =>
+      Response.json({ data: result }),
+  );
+
+  assert.deepEqual(
+    await createInvoice(
+      { apiKey: "key" },
+      { fetch: custom as unknown as typeof fetch },
+    ),
+    result,
+  );
+  assert.equal(global.mock.callCount(), 0);
+  assert.equal(custom.mock.callCount(), 1);
+  const [url, init] = custom.mock.calls[0]!.arguments;
+  assert.equal(url, endpoint);
+  assert.equal(new Headers(init!.headers).get("authorization"), "Bearer key");
+});
+
+test("concurrent calls keep credentials and results independent", async (t) => {
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      const { data } = JSON.parse(init!.body as string) as {
+        data: { apiKey: string };
+      };
+      assert.equal(
+        new Headers(init!.headers).get("authorization"),
+        `Bearer ${data.apiKey}`,
+      );
+      return Response.json({ data: { ...result, pdf: data.apiKey } });
+    },
+  );
+  const invoices = await Promise.all([
+    createInvoice({ apiKey: "first" }),
+    createInvoice({ apiKey: "second" }),
+  ]);
+  assert.deepEqual(
+    invoices.map(({ pdf }) => pdf),
+    ["first", "second"],
+  );
+});
