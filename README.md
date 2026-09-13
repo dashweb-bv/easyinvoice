@@ -5,41 +5,44 @@
 [![Coverage](https://codecov.io/gh/dashweb-bv/easyinvoice/branch/master/graph/badge.svg)](https://codecov.io/gh/dashweb-bv/easyinvoice)
 [![License](https://img.shields.io/npm/l/easyinvoice.svg)](LICENSE)
 
-Create PDF invoices from Node.js using JavaScript or TypeScript. Easy Invoice sends invoice data to the hosted API,
-which validates the invoice, calculates totals, and returns a temporary PDF download URL. An internet connection is required.
-This package is for backend use only and has no runtime dependencies.
-
-To call the API from another language or an HTTP client, see [Direct REST access](#direct-rest-access).
-
-See [Budget Invoice](https://www.budgetinvoice.com/) for the product, account access, and current service terms.
-Service pricing and request limits are managed separately from this npm package.
+Create PDF invoices from Node.js, or use [Direct REST access](#direct-rest-access) from any language.
+The hosted API validates your data, calculates totals, and returns a temporary PDF download URL.
+**The npm package is backend only; an internet connection is required.**
 
 ## Install
 
-Requires **Node.js 22.14 or newer**. CommonJS, native ES modules with tree-shaking support, and TypeScript
-declarations are included. Importing the package has no side effects.
+Requires **Node.js 22.14+**. Includes TypeScript types, CommonJS, and tree-shakeable ES modules, with no runtime dependencies or import side effects.
 
 ```sh
 npm install easyinvoice
-# or
-pnpm add easyinvoice
-# or
-yarn add easyinvoice
 ```
+
+You can also use `pnpm add easyinvoice` or `yarn add easyinvoice`.
 
 ## Create an invoice
 
-Save this TypeScript example as `create-invoice.ts` in your project after installing `easyinvoice`.
-Both the JavaScript and TypeScript examples use ES modules: set `"type": "module"` in your `package.json`.
-It runs on the server. Omit `apiKey` for free access; use an environment variable for a
-production account key. Keep production API keys on your server, never in browser code or a public bundle.
+Save this as `create-invoice.ts` and set `"type": "module"` in your project's `package.json`:
 
 ```ts
 import easyinvoice, { type InvoiceData } from "easyinvoice";
 
+async function fetchBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Asset request failed: ${response.status}`);
+  return Buffer.from(await response.arrayBuffer()).toString("base64");
+}
+
 /** Invoice fields for a development request that produces an EXAMPLE watermark. */
 const data: InvoiceData = {
   mode: "development",
+  images: {
+    logo: await fetchBase64(
+      "https://public.budgetinvoice.com/img/logo_en_original.png",
+    ),
+    background: await fetchBase64(
+      "https://public.budgetinvoice.com/pdf/sample-background-no-logo.pdf",
+    ),
+  },
   sender: {
     company: "Sample Corp",
     address: "123 Main Street",
@@ -80,162 +83,141 @@ easyinvoice
   .catch((error) => console.error(error));
 ```
 
-`createInvoice()` also supports `await` inside an `async` function, or at the top level when your project's
-module and TypeScript settings allow it.
-`saveInvoice()` streams the PDF directly to disk without buffering or base64 conversion.
-See [Errors](#errors) for handling failed requests.
+Run `node create-invoice.ts` on **Node.js 24+** to create `invoice.pdf` with an `EXAMPLE` watermark.
+For JavaScript on Node.js 22.14+, see [examples/create-invoice.js](examples/create-invoice.js) and run `node create-invoice.js`.
+Both examples contact the hosted API. See [API keys and development mode](#api-keys-and-development-mode) for production use.
 
-Run it directly on Node.js 24 or newer:
+<details>
+<summary>Other import styles</summary>
+
+CommonJS: `const easyinvoice = require("easyinvoice")`.
+Named imports: `import { createInvoice, saveInvoice } from "easyinvoice"`.
+The runnable TypeScript source is [examples/create-invoice.ts](examples/create-invoice.ts).
+
+</details>
+
+### JSFiddle demo
+
+[Plain JavaScript](https://jsfiddle.net/easyinvoice/rjtsxhp3/224/)
+
+Full sample data, logo and background, and a PDF.js preview using the free REST API.
+
+## Direct REST access
+
+No package needed. The v4 npm package uses the **v3 HTTP endpoint** below.
+POST JSON with an outer `data` property; for example, with curl in Bash/zsh:
 
 ```sh
-node create-invoice.ts
-```
+set -e
+set -o pipefail
 
-Node's [built-in TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html#type-stripping)
-strips the types without type-checking. No `ts-node` or build step is needed for these examples.
+logo=$(curl --fail --silent --show-error https://public.budgetinvoice.com/img/logo_en_original.png | base64 | tr -d '\r\n')
+background=$(curl --fail --silent --show-error https://public.budgetinvoice.com/pdf/sample-background-no-logo.pdf | base64 | tr -d '\r\n')
 
-The runnable sources are [examples/create-invoice.ts](examples/create-invoice.ts) and
-[examples/create-invoice.js](examples/create-invoice.js). For plain JavaScript, save the JavaScript version
-as `create-invoice.js` and run:
-
-```sh
-node create-invoice.js
-```
-
-Running either example contacts the hosted API and writes `invoice.pdf`.
-
-CommonJS is supported too:
-
-```js
-const easyinvoice = require("easyinvoice");
-
-easyinvoice
-  .createInvoice({
-    mode: "development",
-    products: [
+curl --fail-with-body https://api.easyinvoice.cloud/v3/free/invoices \
+  -H 'Content-Type: application/json' \
+  --data-binary @- <<EOF
+{
+  "data": {
+    "mode": "development",
+    "images": {
+      "logo": "$logo",
+      "background": "$background"
+    },
+    "sender": {
+      "company": "Sample Corp",
+      "address": "123 Main Street",
+      "zip": "78701",
+      "city": "Austin, TX",
+      "country": "United States"
+    },
+    "client": {
+      "company": "Client Corp",
+      "address": "456 Oak Avenue",
+      "zip": "75201",
+      "city": "Dallas, TX",
+      "country": "United States"
+    },
+    "information": {
+      "number": "2026.0001",
+      "date": "09/11/2026",
+      "dueDate": "09/25/2026"
+    },
+    "products": [
       {
-        quantity: 1,
-        description: "Consulting",
-        taxRate: 8.25,
-        price: 75,
-      },
+        "quantity": 2,
+        "description": "Consulting",
+        "taxRate": 8.25,
+        "price": 75
+      }
     ],
-    settings: { currency: "USD", locale: "en-US", format: "Letter" },
-  })
-  .then((result) => easyinvoice.saveInvoice(result, "invoice.pdf"))
-  .catch((error) => console.error(error));
-```
-
-### API keys and development mode
-
-- Free requests omit `apiKey`. Any nonblank key is sent
-  as an `Authorization: Bearer …` header and remains in the invoice payload.
-- Obtain account keys through the product's account settings and store them in server-side environment variables.
-- `mode: "development"` adds an `EXAMPLE` watermark. It still uses the hosted service and remains subject to limits.
-- Omit `mode`, or set it to `"production"`, for production invoices.
-
-## API
-
-`createInvoice(data?: InvoiceData): Promise<CreateInvoiceResult>` sends invoice
-data to the v3 API and returns `pdfUrl`, `expiresAt`, and `calculations`. It does not download the PDF.
-Calls are independent; the client keeps no invoice state.
-
-`saveInvoice(result, filename): Promise<void>` downloads that invoice to a local file. The parent directory must exist. It streams to a temporary file beside the destination, then replaces the destination after a successful download. Download failures leave an existing file untouched and remove the temporary file. It never creates another invoice.
-
-Download URLs expire after five minutes. Save the PDF promptly; do not store the URL as a permanent invoice link or log its signed query string. Invoice API credentials are never forwarded to the download host. Download redirects are rejected.
-
-### Optional base64 output
-
-Request base64 explicitly when an integration needs it:
-
-```ts
-const result = await easyinvoice.createInvoice(data, { output: "base64" });
-// result.pdf is base64; calculations and other result fields are preserved.
-```
-
-This downloads the signed URL and encodes the PDF locally. It returns `CreateInvoiceBase64Result` with `pdf` instead of `pdfUrl` and `expiresAt`. The output option is client-only and is never sent to the API.
-
-Use the default export as shown above, or import the function directly:
-
-```ts
-import { createInvoice } from "easyinvoice";
-
-createInvoice()
-  .then((result) => console.log(result))
-  .catch((error) => console.error(error));
-```
-
-### Errors
-
-- Invalid arguments reject with a `TypeError` before any request is made.
-- Failed requests reject with an `EasyInvoiceError`. HTTP failures set `status` and `body` (the API's error body
-  as parsed JSON or plain text), and the message includes the HTTP status and the API's `message` field when present.
-  Network failures leave `status` undefined and expose the underlying error as `cause`.
-- Malformed successful responses also reject with an `EasyInvoiceError`.
-- Creation has one 30-second deadline, including the PDF download when base64 is requested. Each `saveInvoice()` call has its own 30-second download deadline.
-- Download HTTP errors expose `status`; their response bodies are not retained. Filesystem errors retain their underlying error code. A failed download does not automatically regenerate the invoice.
-
-```ts
-import { createInvoice, EasyInvoiceError } from "easyinvoice";
-
-try {
-  await createInvoice(data);
-} catch (error) {
-  if (error instanceof EasyInvoiceError && error.status === 429) {
-    // Back off and retry later.
+    "bottomNotice": "Please pay within 14 days.",
+    "settings": {
+      "currency": "USD",
+      "locale": "en-US",
+      "format": "Letter"
+    }
   }
-  throw error;
 }
+EOF
 ```
+
+The response contains `data.pdfUrl`, `data.expiresAt`, and `data.calculations` (see [Returned values](#returned-values)).
+Download the PDF within **five minutes**, using the complete `data.pdfUrl` including its query string:
+
+```sh
+curl --fail --output invoice.pdf 'PASTE_DATA_PDF_URL_HERE'
+```
+
+For account access, add `Authorization: Bearer <your-api-key>` to the POST request only; omit it for free access.
+The signed URL authorizes the PDF download. REST returns URL metadata; for base64, download and encode the PDF locally.
+
+## API keys and development mode
+
+- **Free access:** omit `apiKey`.
+- **Account access:** get a key from your [Budget Invoice](https://www.budgetinvoice.com/) account settings and store it in a server environment variable, as above. Never put keys in browser code or public bundles. The package sends nonblank keys as a Bearer header and keeps them in the invoice payload.
+- **Development:** `mode: "development"` adds an `EXAMPLE` watermark. It still contacts the service and counts against limits.
+- **Production:** omit `mode` or set it to `"production"`.
+
+Accounts, pricing, request limits, and service terms are managed by [Budget Invoice](https://www.budgetinvoice.com/), separately from this npm package.
 
 ## Invoice data
 
-The package forwards invoice fields to the API without calculating totals or converting quantities.
-Use `InvoiceData` for the request and `CreateInvoiceResult` for the response. Product quantities accept
-numbers or strings; the server determines which values are valid.
+Add these fields to `data`. The API validates fields and calculates and rounds amounts; the package forwards values without converting quantities.
 
-| Field                | Purpose                                                                     |
-| -------------------- | --------------------------------------------------------------------------- |
-| `apiKey`             | Optional account key; also used as the Bearer token                         |
-| `mode`               | `"development"` or `"production"`                                           |
-| `sender`, `client`   | `company`, `address`, `zip`, `city`, `country`, and `custom1`–`custom3`     |
-| `information`        | Display strings for `number`, `date`, and `dueDate`                         |
-| `products`           | Line items with `quantity`, `description`, `taxRate`, and `price`           |
-| `bottomNotice`       | Text printed at the bottom of the invoice                                   |
-| `settings`           | Currency, number formatting, and page layout                                |
-| `translate`          | Replacement labels for the invoice template                                 |
-| `images`             | Base64-encoded `logo` and `background` files                                |
-| `customize.template` | Base64-encoded HTML template                                                |
+| Field | Purpose |
+| --- | --- |
+| `sender`, `client` | `company`, `address`, `zip`, `city`, `country`, and `custom1`–`custom3` |
+| `information` | Display strings for `number`, `date`, and `dueDate` |
+| `products` | Items with `quantity` (number or string), `description`, `taxRate` (percentage), and `price` (unit price before tax) |
+| `bottomNotice` | Payment instructions or other footer text |
+| `settings` | Currency, number formatting, and page layout |
+| `translate` | Replacement invoice labels |
+| `images` | Base64-encoded `logo` and `background` files |
+| `customize.template` | Base64-encoded HTML template |
 
-The declared types are strict, so TypeScript reports misspelled fields. Fields that are not typed yet are still
-forwarded to the API at runtime; extend `InvoiceData` to pass them from TypeScript.
+Untyped fields are forwarded at runtime; extend `InvoiceData` to use them in TypeScript.
 
 ### Currency, language, and layout
 
-`settings.locale` controls number formatting; `settings.currency` controls the currency symbol.
-For US invoices, use `en-US` with `USD`. These do not translate invoice labels.
+<details>
+<summary>Set currency, paper size, margins, and labels</summary>
+
+`settings.locale` formats numbers; `settings.currency` sets the currency symbol. These do not translate labels.
+Add options like these to `data`:
 
 ```ts
-const settings = {
+data.settings = {
   currency: "USD",
   locale: "en-US",
+  format: "Letter",
+  orientation: "portrait",
   marginTop: 25,
   marginRight: 25,
   marginBottom: 25,
   marginLeft: 25,
-  format: "Letter",
-  orientation: "portrait",
 };
-```
-
-Supported `format` values are `A3`, `A4`, `A5`, `Legal`, `Letter`, and `Tabloid`.
-For custom dimensions, use `height` and `width` with `px`, `mm`, `cm`, or `in`, such as `"8.5in"`.
-Orientation is `"portrait"` or `"landscape"`. Page layout and formatting are applied by the hosted API.
-
-Use `translate` for labels:
-
-```ts
-const translate = {
+data.translate = {
   invoice: "INVOICE",
   number: "Invoice number",
   date: "Invoice date",
@@ -251,56 +233,44 @@ const translate = {
 };
 ```
 
-Use `translate.taxNotation` for the tax label. The legacy `translate.vat` type remains available, but the
-current template reads `taxNotation`.
+- Paper sizes: `A3`, `A4`, `A5`, `Legal`, `Letter`, `Tabloid`. Custom `height` and `width` accept `px`, `mm`, `cm`, or `in`, such as `"8.5in"`.
+- Orientation: `"portrait"` or `"landscape"`. The hosted API applies layout and formatting.
+- For the tax label, use `translate.taxNotation`. The legacy `translate.vat` type remains available, but the template uses `taxNotation`.
+
+</details>
 
 ### Logo and background
 
-Supply base64 file contents, not image URLs. The logo accepts an image; the background accepts an image
-or a PDF. In Node.js, read local files as base64:
+<details>
+<summary>Add artwork from local or remote files</summary>
+
+Supply base64 file contents. The logo accepts an image; the background accepts an image or PDF. URLs are not supported as field values.
+The main example fetches and encodes the sample artwork. For local files:
 
 ```ts
-import { readFile } from "fs/promises";
+import { readFile } from "node:fs/promises";
 
-const images = {
+data.images = {
   logo: await readFile("logo.png", "base64"),
   background: await readFile("background.pdf", "base64"),
 };
 ```
 
-To use a remote file, fetch it in your application and encode its bytes before passing it to the API:
+</details>
 
-```ts
-const response = await fetch("https://example.com/logo.png");
-if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
-const logo = Buffer.from(await response.arrayBuffer()).toString("base64");
-```
+### Custom templates
 
-### Returned values
+<details>
+<summary>Use your own HTML and invoice placeholders</summary>
 
-| Field                            | Value                                              |
-| -------------------------------- | -------------------------------------------------- |
-| `result.pdfUrl`                  | Temporary signed PDF download URL (default output) |
-| `result.expiresAt`               | URL expiry as an ISO 8601 timestamp (default output) |
-| `result.pdf`                     | Base64-encoded PDF when using `{ output: "base64" }` |
-| `result.calculations.products`   | Per-product `subtotal`, `tax`, and `total`         |
-| `result.calculations.tax`        | Object mapping each tax rate to its total tax amount |
-| `result.calculations.subtotal`   | Combined amount excluding tax                      |
-| `result.calculations.total`      | Combined amount including tax                      |
-
-Amounts are calculated and rounded by the server. Additional response fields are preserved.
-
-## Custom templates
-
-Set `customize.template` to base64-encoded HTML. In Node.js, `Buffer` handles non-ASCII template text:
+Set `customize.template` to base64-encoded HTML:
 
 ```ts
 const html = "<h1>%document-title%</h1><p>Invoice %number%</p>";
-const customize = { template: Buffer.from(html, "utf8").toString("base64") };
+data.customize = { template: Buffer.from(html, "utf8").toString("base64") };
 ```
 
-For a local template, use `await readFile("template.html", "base64")`.
-Template URLs are not supported. Standard placeholders map to the following invoice fields:
+For a local template, use `await readFile("template.html", "base64")`. Template URLs are not supported.
 
 | Placeholder | Source |
 | --- | --- |
@@ -337,81 +307,26 @@ Inside `<products>`, `%description%`, `%quantity%`, and `%price%` refer to the c
 Inside `<tax>`, `%tax-notation%` uses `translate.taxNotation`, `%tax-rate%` is the current tax rate,
 and `%tax%` is its calculated amount. Keep the wrapper tags so the template parser can repeat each row.
 
-## Direct REST access
+</details>
 
-Call the service from any language or HTTP client without installing this package.
-The v4 npm package uses the **v3 HTTP endpoint**: `POST https://api.easyinvoice.cloud/v3/free/invoices`.
-Send JSON with an outer `data` property:
+## API
 
-```http
-POST /v3/free/invoices HTTP/1.1
-Host: api.easyinvoice.cloud
-Content-Type: application/json
+| Method | Result |
+| --- | --- |
+| `createInvoice(data?: InvoiceData)` | `Promise<CreateInvoiceResult>` with URL metadata and calculations; does not download the PDF |
+| `saveInvoice(result, filename)` | `Promise<void>`; streams the existing PDF to disk without buffering, base64 conversion, or creating another invoice |
 
-{
-  "data": {
-    "mode": "development",
-    "products": [
-      {
-        "quantity": 1,
-        "description": "Consulting",
-        "taxRate": 0,
-        "price": 12
-      }
-    ],
-    "settings": {
-      "currency": "USD",
-      "locale": "en-US",
-      "format": "Letter"
-    }
-  }
-}
-```
+**Save PDFs promptly:** download URLs expire after five minutes. Do not keep them as permanent links or log their signed query strings.
+The package never forwards API credentials to the download host and rejects download redirects.
 
-The same request with curl (Bash/zsh):
+<details>
+<summary>Saving files and creating several invoices</summary>
 
-```sh
-curl --fail-with-body https://api.easyinvoice.cloud/v3/free/invoices \
-  -H 'Content-Type: application/json' \
-  -d '{"data":{"mode":"development","products":[{"quantity":1,"description":"Consulting","taxRate":0,"price":12}],"settings":{"currency":"USD","locale":"en-US","format":"Letter"}}}'
-```
+The destination's parent directory must exist. `saveInvoice()` streams to a temporary file beside it and replaces the destination only after a successful download. Failures preserve an existing file and remove the temporary file.
 
-For account access, add an `Authorization: Bearer <your-api-key>` header to the POST request from your server.
-Omit that header for free access. Omit `mode`, or set it to `"production"`, to create invoices without the development watermark.
+### Concurrent creation
 
-A successful response has this shape (the URL and expiry below are illustrative):
-
-```json
-{
-  "data": {
-    "calculations": {
-      "products": [{ "subtotal": 12, "tax": 0, "total": 12 }],
-      "tax": {},
-      "subtotal": 12,
-      "total": 12
-    },
-    "pdfUrl": "https://exports.budgetinvoice.com/invoices/example.pdf?SIGNED_QUERY_PARAMETERS",
-    "expiresAt": "2026-09-13T12:55:43.000Z"
-  }
-}
-```
-
-The HTTP response wraps the result in `data`; `createInvoice()` returns that inner object.
-Download the PDF with a separate GET to the complete `data.pdfUrl` value before `data.expiresAt` (five minutes after creation).
-Replace the placeholder below with the returned URL, keeping its full query string and the surrounding quotes:
-
-```sh
-curl --fail --output invoice.pdf 'PASTE_DATA_PDF_URL_HERE'
-```
-
-The signed URL authorizes the download; send your API key only to the invoice POST endpoint.
-The HTTP API returns URL metadata. For base64, download the PDF and encode its bytes locally,
-or use the package's [optional base64 output](#optional-base64-output).
-
-## Concurrent creation
-
-Use `Promise.all` for a small batch, and handle rejection as with a single invoice. All requests count
-against the service's applicable limits.
+Calls are independent; the client keeps no invoice state. Each request counts against service limits.
 
 ```ts
 const invoices = await Promise.all([
@@ -420,32 +335,89 @@ const invoices = await Promise.all([
 ]);
 ```
 
+</details>
+
+### Optional base64 output
+
+```ts
+const result = await easyinvoice.createInvoice(data, { output: "base64" });
+// result.pdf contains the base64-encoded PDF.
+```
+
+This downloads and encodes the PDF locally, returning `CreateInvoiceBase64Result` with `pdf` instead of `pdfUrl` and `expiresAt`.
+Calculations and extra fields are preserved. The output option is never sent to the API.
+
+### Returned values
+
+<details>
+<summary>PDF metadata and calculated amounts</summary>
+
+`createInvoice()` unwraps the HTTP response's outer `data` object:
+
+| Field | Value |
+| --- | --- |
+| `result.pdfUrl` | Temporary signed PDF URL (default output) |
+| `result.expiresAt` | URL expiry as an ISO 8601 timestamp (default output) |
+| `result.pdf` | Base64 PDF when using `{ output: "base64" }` |
+| `result.calculations.products` | Per-product `subtotal`, `tax`, and `total` |
+| `result.calculations.tax` | Object mapping each tax rate to its total tax amount |
+| `result.calculations.subtotal` | Combined amount excluding tax |
+| `result.calculations.total` | Combined amount including tax |
+
+Amounts are calculated and rounded by the server. Additional response fields are preserved.
+
+</details>
+
+### Errors
+
+Requests reject with `EasyInvoiceError`; invalid arguments reject with `TypeError` before any request.
+Creation has a **30-second deadline**, including the download for base64 output. Each `saveInvoice()` call has its own 30-second deadline.
+
+<details>
+<summary>Handle HTTP, network, and download errors</summary>
+
+- HTTP failures expose `error.status` and `error.body` (parsed JSON or plain text). The message includes the status and the API's `message` when present.
+- Network failures leave `status` undefined and expose the underlying `cause`. Malformed successful responses also reject with `EasyInvoiceError`.
+- Download HTTP errors expose `status` without retaining response bodies. Filesystem errors keep their underlying error code. A failed download does not regenerate the invoice.
+
+```ts
+import { createInvoice, EasyInvoiceError } from "easyinvoice";
+
+try {
+  await createInvoice(data);
+} catch (error) {
+  if (error instanceof EasyInvoiceError && error.status === 429) {
+    // Back off and retry later.
+  }
+  throw error;
+}
+```
+
+</details>
+
 ## Development and compatibility
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for repository setup, checks, and automated releases.
-Report package bugs in [GitHub issues](https://github.com/dashweb-bv/easyinvoice/issues) and security issues
-as described in [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and releases.
+Report bugs in [GitHub issues](https://github.com/dashweb-bv/easyinvoice/issues); follow [SECURITY.md](SECURITY.md) for security reports.
+
+<details>
+<summary>Upgrading from v3 or the first v4 releases</summary>
 
 ### Migration from version 3
 
-Easy Invoice originally supported both backend and frontend use. We removed frontend support because
-authenticated API access uses secret API keys, which cannot be kept private in browser code.
-
-This is a breaking change. Invoice generation is supported only on the backend; browser/CDN entry points,
-PDF rendering, printing, and download helpers have been removed.
-
+- **Backend only:** browser/CDN entry points and PDF rendering, printing, and download helpers were removed to keep secret API keys on the server. Remove `download`, `print`, `render`, `renderPdf`, and `renderPage` calls.
 - Replace `new EasyInvoice().createInvoice(data)` with `createInvoice(data)` or `easyinvoice.createInvoice(data)`.
-- Replace `createInvoice(data, callback)` with `await createInvoice(data)` or `.then()`/`.catch()`.
-- Remove calls to `download`, `print`, `render`, `renderPdf`, and `renderPage`.
-- Failed requests now reject with an `EasyInvoiceError` instead of the raw API response body.
-  Read the body from `error.body` and the HTTP status from `error.status`.
-- Invoice types no longer accept arbitrary extra fields. Extend `InvoiceData` for fields that are not typed yet.
-- Node.js 22.14 or newer is required.
+- Replace callbacks with `await` or `.then()` / `.catch()`.
+- Failures now use `EasyInvoiceError`; read the response body from `error.body` and HTTP status from `error.status`.
+- Extend `InvoiceData` for untyped fields. Node.js 22.14+ is required.
 
 Invoice payloads, API key behavior, and calculations are unchanged. Requests now use the v3 endpoint.
 
 ### URL output in the revised v4 release
 
-The initial v4.0.0–v4.0.4 releases returned base64 by default. The revised v4 API deliberately changes that default to URL metadata. Replace `writeFile(filename, result.pdf, "base64")` with `saveInvoice(result, filename)`, or pass `{ output: "base64" }` to keep base64 output.
+v4.0.0–v4.0.4 returned base64 by default. The revised v4 API returns URL metadata:
+replace `writeFile(filename, result.pdf, "base64")` with `saveInvoice(result, filename)`, or pass `{ output: "base64" }` to keep base64 output.
 
-The v2.4.2 and v3.0.48 maintenance patches use the same v3 transport but download and convert automatically, preserving their legacy base64 results and callbacks. Older unpatched installations still require the server's v2 endpoint.
+The v2.4.2 and v3.0.48 maintenance patches use the same v3 transport but download and convert automatically, preserving legacy base64 results and callbacks. Older unpatched clients still need the server's v2 endpoint.
+
+</details>

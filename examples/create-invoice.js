@@ -1,11 +1,25 @@
 import easyinvoice from "easyinvoice";
 
+async function fetchBase64(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Asset request failed: ${response.status}`);
+  return Buffer.from(await response.arrayBuffer()).toString("base64");
+}
+
 /**
  * Invoice fields for a development request that produces an EXAMPLE watermark.
  * @type {import("easyinvoice").InvoiceData}
  */
 const data = {
   mode: "development",
+  images: {
+    logo: await fetchBase64(
+      "https://public.budgetinvoice.com/img/logo_en_original.png",
+    ),
+    background: await fetchBase64(
+      "https://public.budgetinvoice.com/pdf/sample-background-no-logo.pdf",
+    ),
+  },
   sender: {
     company: "Sample Corp",
     address: "123 Main Street",

@@ -279,13 +279,30 @@ const commonjsError: commonjs.EasyInvoiceError = new commonjs.EasyInvoiceError("
 import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "node:fs";
 const pdf = "JVBERi0xLjcK";
+const logo = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff]);
+const background = Buffer.from("%PDF-1.7 sample background");
+const assets = new Map([
+  ["https://public.budgetinvoice.com/img/logo_en_original.png", logo],
+  ["https://public.budgetinvoice.com/pdf/sample-background-no-logo.pdf", background],
+]);
 let requests = 0;
 globalThis.fetch = async (url, options) => {
   requests++;
-  if (options?.method === "POST") return Response.json({ data: {
-    pdfUrl: "https://exports.example.com/invoice.pdf?signature=test",
-    expiresAt: "2099-01-01T00:05:00.000Z",
-  } });
+  if (assets.has(url)) {
+    assert.equal(options?.headers, undefined);
+    return new Response(assets.get(url));
+  }
+  if (options?.method === "POST") {
+    assert.equal(url, "https://api.easyinvoice.cloud/v3/free/invoices");
+    assert.deepEqual(JSON.parse(options.body).data.images, {
+      logo: logo.toString("base64"),
+      background: background.toString("base64"),
+    });
+    return Response.json({ data: {
+      pdfUrl: "https://exports.example.com/invoice.pdf?signature=test",
+      expiresAt: "2099-01-01T00:05:00.000Z",
+    } });
+  }
   assert.equal(url, "https://exports.example.com/invoice.pdf?signature=test");
   assert.equal(options.headers, undefined);
   return new Response(Buffer.from(pdf, "base64"));
@@ -293,7 +310,7 @@ globalThis.fetch = async (url, options) => {
 rmSync("invoice.pdf", { force: true });
 // Promise chains can finish after module evaluation, so check once file I/O has completed.
 process.once("beforeExit", () => {
-  assert.equal(requests, 2);
+  assert.equal(requests, 4);
   assert.equal(readFileSync("invoice.pdf").toString("base64"), pdf);
 });
 await import(process.argv[2]);
