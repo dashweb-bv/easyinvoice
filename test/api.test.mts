@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 import easyinvoice from "../dist/index.cjs";
 import { createInvoice, EasyInvoiceError } from "../dist/index.mjs";
 
 const endpoint = "https://api.easyinvoice.cloud/v3/free/invoices";
+const { version } = createRequire(import.meta.url)("../package.json") as {
+  version: string;
+};
 const result = {
   pdfUrl: "https://exports.example.com/invoice.pdf?signature=test",
   expiresAt: "2099-01-01T00:05:00.000Z",
@@ -69,6 +73,7 @@ test("createInvoice preserves the request and returns the full API result", asyn
   const headers = new Headers(init!.headers);
   assert.equal(headers.get("content-type"), "application/json");
   assert.equal(headers.get("easyinvoice-source"), "npm");
+  assert.equal(headers.get("easyinvoice-version"), version);
   assert.equal(headers.has("authorization"), false);
 });
 

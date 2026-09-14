@@ -95,6 +95,17 @@ try {
     { cwd: consumer, env: npmEnv, stdio: "inherit" },
   );
 
+  // Release preparation changes the manifest after CI has built the source.
+  const installedManifest = join(
+    consumer,
+    "node_modules/easyinvoice/package.json",
+  );
+  const released = JSON.parse(readFileSync(installedManifest, "utf8")) as {
+    version: string;
+  };
+  released.version = "4.1.2-metadata-check.1";
+  writeFileSync(installedManifest, JSON.stringify(released));
+
   // Check a cold CommonJS load before the separate ESM-first consumer.
   execFileSync(
     runtime,
@@ -141,6 +152,8 @@ globalThis.fetch = async (url, options) => {
   requests++;
   assert.equal(url, "https://api.easyinvoice.cloud/v3/free/invoices");
   assert.equal(options.method, "POST");
+  assert.equal(new Headers(options.headers).get("easyinvoice-source"), "npm");
+  assert.equal(new Headers(options.headers).get("easyinvoice-version"), manifest.version);
   assert.equal(new Headers(options.headers).get("authorization"), "Bearer test-account-key");
   assert.deepEqual(JSON.parse(options.body), { data });
   return Response.json({ data: result });

@@ -117,3 +117,8 @@ Use an unused v4 release number: a `feat:` commit after v4.0.4 produces v4.1.0 w
 Keep historical Git tags even if the corresponding npm versions are later unpublished, so semantic-release
 does not try to reuse an npm version. Unpublishing is a separate manual operation; no migration script does it.
 Leave the server's v2 endpoint available for clients that have not installed the maintenance patches.
+
+The v2.4.3 and v3.0.49 maintenance releases add package-version headers to the published v2.4.2 and v3.0.48 sources.
+Both Node.js and browser builds read the version from their package metadata; rebuild browser bundles after
+bumping the manifest. Keep the `legacy` and `legacy-v3` npm tags when publishing these releases manually.
+The v4 client reads its installed manifest at runtime, including the version written by semantic-release.

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { open, rename, rm, stat } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { EasyInvoiceError } from "./error.js";
@@ -12,6 +13,9 @@ import type {
 
 const endpoint = "https://api.easyinvoice.cloud/v3/free/invoices";
 const requestTimeoutMs = 30_000;
+const { version } = createRequire(import.meta.url)("../package.json") as {
+  version: string;
+};
 
 /**
  * Creates a PDF invoice and returns a temporary download URL and calculations.
@@ -77,6 +81,7 @@ export async function createInvoice(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "easyinvoice-source": "npm",
+    "easyinvoice-version": version,
   };
   if (apiKey?.trim()) {
     headers.Authorization = `Bearer ${apiKey}`;

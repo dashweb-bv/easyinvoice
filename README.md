@@ -94,6 +94,9 @@ CommonJS: `const easyinvoice = require("easyinvoice")`.
 Named imports: `import { createInvoice, saveInvoice } from "easyinvoice"`.
 The runnable TypeScript source is [examples/create-invoice.ts](examples/create-invoice.ts).
 
+Invoice requests send `easyinvoice-source: npm` and `easyinvoice-version` from the installed package's
+`package.json`, so Admin → Free API can show the client package version.
+
 </details>
 
 ### JSFiddle demo
